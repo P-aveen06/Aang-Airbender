@@ -64,7 +64,9 @@ The physical trackpad and mouse remain available as the external recovery path.
 
 The central camera control box in `config.yaml` maps to the complete main display. This intentionally
 increases useful cursor travel without adding the Phase 2 acceleration curve. Tune only through the
-validated configuration; invalid and unknown values fail closed.
+validated configuration; invalid and unknown values fail closed. The default box spans 50% of the
+camera width and 54% of its height, giving approximately 20% more horizontal response and 18.5%
+more vertical response than the initial Phase 1 values.
 
 For a bounded run or opt-in debug preview:
 

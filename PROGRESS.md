@@ -567,3 +567,50 @@ The full-suite failure is the existing WindowServer/graphics-context limitation 
 process. It does not establish a target-Mac failure or pass. The official-model `LIVE_STREAM` smoke
 test, live gesture confusion gates, real-app double-click, and all remaining target-Mac acceptance
 checks are **UNVERIFIED** for this v1.1 change until rerun from the user's permitted terminal.
+
+### Phase 1 pointer-sensitivity tuning
+
+After live use, the project owner requested faster palm-to-cursor response. Narrowed the existing
+absolute control box from `0.20..0.80` to `0.25..0.75` horizontally and from `0.18..0.82` to
+`0.23..0.77` vertically. The full display now requires 50% of camera width and 54% of camera height,
+which is approximately 20% more horizontal response and 18.5% more vertical response than the
+initial Phase 1 configuration. This remains Phase 1 absolute control-box tuning; no Phase 2 relative
+mapping or acceleration curve was added.
+
+The first targeted formatting command incorrectly included Markdown and YAML inputs. Ruff reported
+that Markdown formatting requires preview mode and that YAML is not a Python expression. The Python
+files in that command were already formatted; targeted lint and mapping/configuration tests passed:
+
+```text
+.venv/bin/ruff check tests/test_control.py src/aang_airbender/control.py src/aang_airbender/coordinates.py
+All checks passed!
+
+.venv/bin/pytest -q tests/test_config.py tests/test_coordinates.py tests/test_control.py
+12 passed in 0.16s
+```
+
+Repository validation after the tuning:
+
+```text
+.venv/bin/ruff format --check .
+38 files already formatted
+
+.venv/bin/ruff check .
+All checks passed!
+
+.venv/bin/python -m compileall -q src scripts tests
+PASS
+
+.venv/bin/pytest -q --ignore=tests/test_model_smoke.py
+73 passed in 24.14s
+
+.venv/bin/pytest -q
+1 failed, 73 passed in 24.07s
+FAIL: tests/test_model_smoke.py::test_official_model_runs_in_live_stream_mode
+RuntimeError: Could not create an NSOpenGLPixelFormat
+```
+
+The full-suite failure is the existing graphics-context restriction in the Codex process, not a
+new mapping failure. Live target-Mac feel, cursor travel, jitter, and click-precision impact are
+**UNVERIFIED** until the owner reruns the controller. The increase is deliberately moderate because
+excessive sensitivity would worsen the currently observed click-target retention problem.

@@ -16,10 +16,15 @@ def test_one_euro_filter_tracks_constant_and_resets_to_fresh_baseline() -> None:
 
 
 def test_point_is_filtered_mirrored_and_expanded_by_control_box() -> None:
-    control = ControlEngine(load_config(), DisplayBounds(0, 0, 1000, 500))
+    config = load_config()
+    control = ControlEngine(config, DisplayBounds(0, 0, 1000, 500))
 
     events = control.consume(
-        GestureIntent(IntentKind.POINT, 1_000_000_000, point=Point2(0.2, 0.18))
+        GestureIntent(
+            IntentKind.POINT,
+            1_000_000_000,
+            point=Point2(1.0 - config.control_box.right, config.control_box.top),
+        )
     )
 
     assert len(events) == 1

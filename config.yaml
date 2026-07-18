@@ -38,10 +38,10 @@ control:
   one_euro_beta: 0.007
   one_euro_derivative_cutoff: 1.0
   control_box:
-    left: 0.20
-    top: 0.18
-    right: 0.80
-    bottom: 0.82
+    left: 0.25
+    top: 0.23
+    right: 0.75
+    bottom: 0.77
   scroll_gain: 900.0
   natural_scrolling: true
   two_finger_scroll_displacement_ratio: 0.18
