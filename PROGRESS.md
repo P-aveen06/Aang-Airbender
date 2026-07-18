@@ -292,3 +292,59 @@ First headless core slice:
   restricted Codex runner limitation: MediaPipe could not create `NSOpenGLPixelFormat` / GPU
   service. The same official model smoke path passed on the unrestricted target Mac in Phase 0.
   This Phase 1 target-Mac rerun remains **UNVERIFIED** until the complete pipeline is ready.
+
+Second core/safety slice:
+
+- Added elapsed-time engagement and gesture FSMs with wake dwell, pose stability, hand-loss grace,
+  reacquisition stability, pinch hysteresis, two-finger arbitration and branch locking, one-shot
+  right click, scroll, drag, clutch, and terminal fault behavior.
+- Added One Euro filtering with initial `min_cutoff=1.0`, `beta=0.007`; configurable central-box
+  absolute mapping; natural pixel scrolling without momentum; and fresh filter baselines.
+- Centralized camera mirroring and MediaPipe handedness correction in `coordinates.py`; removed the
+  obsolete Phase 0 cursor adapter so there is no second mirroring implementation.
+- Added the single Phase 1 Quartz action dispatcher with owned-button tracking and idempotent
+  `safe_release_all()`; removed the obsolete duplicate Phase 0 safety adapter.
+- Added an exception-safe pipeline boundary. Tracking loss, disengagement, simulated fault, config
+  reload preparation, display topology change, normal process exit, and exceptional process exit
+  are covered with a mocked dispatcher and explicit release assertions.
+- Added opt-in landmark/video recording scripts, strict JSONL replay, a synthetic non-camera replay
+  fixture, debug rendering off by default, structured state-transition logs, emitted-action counts,
+  and reported-false-action counters.
+- Updated setup/run/privacy/error documentation. No camera-derived recording was made by Codex.
+
+Validation commands and outputs:
+
+```text
+.venv/bin/ruff format .
+36 files left unchanged
+
+.venv/bin/ruff check .
+All checks passed!
+
+.venv/bin/pytest -q -k 'not official_model_runs_in_live_stream_mode'
+50 passed, 1 deselected in 22.66s
+
+# Approved WindowServer-capable target-Mac execution
+.venv/bin/pytest
+51 passed in 1.63s
+```
+
+The full test run includes geometry, pose predicates, FSM sequences, JSONL landmark replay,
+configuration failure paths, semantic control, action ownership, pipeline terminal paths, bounded
+handoffs, monotonic timestamps, timing metrics, and the official-model `LIVE_STREAM` smoke test.
+
+Current Codex-process permission probe:
+
+```text
+.venv/bin/python scripts/preflight.py
+Python: 3.11.14
+Architecture: arm64
+Accessibility trusted: False
+AVFoundation camera opened: True
+AVFoundation camera frame read: True
+PREFLIGHT FAILED — Accessibility permission is missing for the Codex process
+```
+
+This does not invalidate the earlier Phase 0 user-terminal permission evidence, but it prevents
+Codex from claiming a Phase 1 Quartz end-to-end run. Phase 1 real cursor/click/drag/scroll and
+objective release checks are **UNVERIFIED — requires the user's Accessibility-trusted terminal**.

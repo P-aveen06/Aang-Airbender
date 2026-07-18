@@ -1,14 +1,16 @@
 # Aang-Airbender
 
-Aang-Airbender Phase 0 is a macOS technical spike proving this exact path:
+Aang-Airbender is a local macOS hand controller. Phase 1 builds the safe “core five” on the proven
+Phase 0 path:
 
 ```text
-OpenCV AVFoundation -> MediaPipe Hand Landmarker LIVE_STREAM
--> landmarks 5/17 palm midpoint -> main-display Quartz cursor movement
+OpenCV AVFoundation -> MediaPipe Hand Landmarker LIVE_STREAM -> immutable HandState
+-> palm-relative features -> timestamp FSM -> filtered absolute control
+-> semantic events -> Quartz mouse and pixel-scroll events
 ```
 
-It intentionally has no gesture recognition, clicks, scrolling, filtering, calibration, HUD,
-acceleration, or packaging.
+Phase 1 is still under validation. It does not include calibration, relative mapping, acceleration
+curves, scroll momentum, a HUD/menu-bar app, packaging, or later gesture vocabulary.
 
 ## Requirements
 
@@ -17,7 +19,7 @@ acceleration, or packaging.
 - [`uv`](https://docs.astral.sh/uv/)
 
 Accessibility changes may not take effect in an already-running terminal. Fully quit the terminal
-application (not just its window), reopen it, and rerun the preflight after granting permission.
+application—not just its window—reopen it, and rerun the preflight after granting permission.
 
 ## Setup
 
@@ -29,49 +31,95 @@ uv run python scripts/preflight.py
 ```
 
 The architecture command must report Python `3.11.x` and `arm64`. In **System Settings > Privacy &
-Security**, grant Camera and Accessibility access to the terminal application that runs these
-commands. The preflight checks both permissions and opens the camera once so macOS can show its
-Camera prompt.
+Security**, grant Camera and Accessibility access to the terminal application running the commands.
 
-## Run
+## Run Phase 1
 
 ```bash
 uv run python -m aang_airbender.app
 ```
 
-Press Control-C to stop. Shutdown prints a compact software-pipeline timing report. These values
-exclude camera exposure/sensor delay before frame capture and display composition/refresh; they are
-not motion-to-visible latency.
+The controller starts disengaged. Hold an open palm facing the camera for about 0.9 seconds to
+engage. The initial vocabulary is:
 
-For a bounded evidence run:
+- Index-only point or relaxed open hand: move the pointer.
+- Thumb-index pinch: hold the left button; opening the pinch releases it.
+- Two fingers, index and middle: movement scrolls; a stationary dwell performs one right click.
+- Fist: clutch/freeze the pointer. Releasing the fist resets the pointer filter baseline. A fist
+  does not disengage the controller.
+
+Press Control-C to stop. Shutdown and error paths release any left button held by Aang-Airbender.
+The physical trackpad and mouse remain available as the external recovery path.
+
+The central camera control box in `config.yaml` maps to the complete main display. This intentionally
+increases useful cursor travel without adding the Phase 2 acceleration curve. Tune only through the
+validated configuration; invalid and unknown values fail closed.
+
+For a bounded run or opt-in debug preview:
 
 ```bash
 uv run python -m aang_airbender.app --duration-seconds 30
+uv run python -m aang_airbender.app --duration-seconds 30 --debug
 ```
 
-## Validate
+Debug rendering is off by default. Shutdown prints software pipeline timing, emitted action counts,
+reported false-action counts, and the objective combined-session Quartz left-button state. Software
+timing excludes camera sensor delay and display composition; it is not motion-to-visible latency.
+
+## Validate without camera access
 
 ```bash
 uv run ruff format --check .
 uv run ruff check .
-uv run pytest
+uv run pytest -k 'not official_model_runs_in_live_stream_mode'
+```
+
+The full `uv run pytest` includes the official-model `LIVE_STREAM` smoke test and requires a macOS
+session capable of creating MediaPipe's graphics context. The geometry, poses, FSM, replay, control,
+action safety, and configuration layers run headlessly.
+
+After the permission preflight succeeds, verify real Quartz release behavior:
+
+```bash
 uv run python scripts/verify_safe_release.py
 ```
 
-The final command deliberately emits a left-button-down event, simulates a controlled failure, and
-then verifies the combined-session Quartz button state after release. Run it only after the
-preflight succeeds. Physical mouse and trackpad input remain available as an external recovery path.
+That script deliberately emits left-button-down events before controlled-failure and normal-shutdown
+checks. It verifies `CGEventSourceButtonState` is false after each release.
+
+## Opt-in fixture recording
+
+These commands record camera-derived data locally. Nothing records automatically. Review the output
+before committing or sharing it; video and hand motion can contain sensitive information. Existing
+files are never overwritten.
+
+```bash
+uv run python scripts/record_landmarks.py \
+  --output tests/fixtures/landmarks/phase1-recorded.jsonl \
+  --duration-seconds 30 \
+  --i-understand-camera-derived-data
+
+uv run python scripts/record_video_fixture.py \
+  --output tests/fixtures/videos/phase1-short.mp4 \
+  --duration-seconds 5 \
+  --i-understand-camera-derived-data
+```
+
+The repository includes a non-camera synthetic JSONL replay for deterministic tests. Phase 1's
+required 30-second target-Mac landmark fixture and short video remain acceptance evidence to collect.
 
 ## Model provenance
 
-`models/hand_landmarker.task` is MediaPipe's Hand Landmarker `float16`, version `1`, downloaded from
-the official Google-hosted MediaPipe model URL recorded in `models/MODEL_INFO.md`. The exact SHA-256
-checksum is recorded there and in `PROGRESS.md`.
+`models/hand_landmarker.task` is MediaPipe Hand Landmarker `float16`, version `1`, from the official
+Google-hosted URL recorded in `models/MODEL_INFO.md`. Its SHA-256 checksum is recorded there and in
+`PROGRESS.md`.
 
 ## Common failures
 
 - `Expected Python 3.11`: rerun `uv python pin 3.11` and `uv sync --frozen`.
-- `Expected Apple Silicon arm64`: do not use a Rosetta/x86 terminal or dependency environment.
-- Accessibility denied: grant the terminal under Privacy & Security, fully quit it, and reopen it.
-- Camera open/read failed: grant Camera access, close other camera users, then rerun the preflight.
+- `Expected Apple Silicon arm64`: do not use a Rosetta/x86 terminal or environment.
+- Accessibility denied: grant the terminal access, fully quit it, reopen it, and rerun preflight.
+- Camera open/read failed: grant Camera access, close other camera users, and rerun preflight.
 - Model load failed: verify `shasum -a 256 models/hand_landmarker.task` against `MODEL_INFO.md`.
+- Invalid configuration: read the complete field path in the startup error and compare
+  `config.yaml` with `config.schema.json`; the application will not run with unsafe values.

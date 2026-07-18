@@ -51,7 +51,7 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
         and all(curled[finger.value] for finger in (Finger.MIDDLE, Finger.RING, Finger.PINKY))
     )
     relaxed = confidence_valid and index and middle and ring and non_pinching
-    separation_valid = features.pinch_ratio_middle >= float(
+    separation_valid = features.index_middle_separation_ratio >= float(
         poses["min_two_finger_separation_ratio"]
     )
     two_finger = (

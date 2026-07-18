@@ -1,3 +1,3 @@
-"""Aang-Airbender Phase 0 technical spike."""
+"""Aang-Airbender local hand-control pipeline for macOS."""
 
 __version__ = "0.1.0"

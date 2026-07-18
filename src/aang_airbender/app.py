@@ -9,11 +9,14 @@ import time
 from pathlib import Path
 from threading import Event
 
+from .actions import ActionDispatcher, QuartzActionBackend
 from .capture import OpenCVLatestFrameCapture
-from .cursor import QuartzCursor, map_to_screen, palm_midpoint
+from .config import load_config
+from .debug import DebugRenderer
 from .perception import LiveHandLandmarker, is_strictly_newer
-from .safety import MouseSafety, QuartzMouseEventBackend
+from .pipeline import Phase1Pipeline
 from .timing import TimingMetrics
+from .types import EventKind
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +34,9 @@ def model_path() -> Path:
     return Path(__file__).resolve().parents[2] / "models" / "hand_landmarker.task"
 
 
-def run(*, duration_seconds: float | None = None) -> int:
+def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
     verify_native_environment()
+    config = load_config()
     asset = model_path()
     if not asset.is_file():
         raise RuntimeError(f"Hand Landmarker model is missing: {asset}")
@@ -43,14 +47,22 @@ def run(*, duration_seconds: float | None = None) -> int:
 
     metrics = TimingMetrics()
     capture = OpenCVLatestFrameCapture(on_frame=metrics.record_capture)
-    cursor = QuartzCursor()
-    safety = MouseSafety(QuartzMouseEventBackend())
+    backend = QuartzActionBackend()
+    dispatcher = ActionDispatcher(backend)
+    pipeline = Phase1Pipeline(config, backend.main_display_bounds(), dispatcher)
+    renderer = (
+        DebugRenderer(int(config.section("debug")["render_every_n_frames"])) if debug else None
+    )
     frame_version = 0
     result_version = 0
     last_result_timestamp_ms = -1
 
     try:
-        with capture, LiveHandLandmarker(str(asset), metrics=metrics) as landmarker:
+        with (
+            pipeline,
+            capture,
+            LiveHandLandmarker(str(asset), config=config, metrics=metrics) as landmarker,
+        ):
             LOGGER.info(
                 "Camera active: actual=%dx%d reported_fps=%.2f reported_buffer_size=%s",
                 capture.actual_width,
@@ -83,35 +95,52 @@ def run(*, duration_seconds: float | None = None) -> int:
                         metrics.record_stale()
                     else:
                         last_result_timestamp_ms = result.mediapipe_timestamp_ms
-                        if result.landmarks:
-                            anchor_x, anchor_y = palm_midpoint(result.landmarks)
-                            screen_x, screen_y = map_to_screen(anchor_x, anchor_y, cursor.bounds)
-                            cursor.move(screen_x, screen_y)
-                            dispatched_at_ns = time.monotonic_ns()
-                            metrics.record_dispatch(result.captured_at_ns, dispatched_at_ns)
-                            LOGGER.debug(
-                                "frame=%d capture=%d submit=%d callback=%d consume=%d dispatch=%d",
-                                result.frame_id,
-                                result.captured_at_ns,
-                                result.submitted_at_ns,
-                                result.callback_at_ns,
-                                consumed_at_ns,
-                                dispatched_at_ns,
-                            )
-                        else:
-                            safety.safe_release_all()
+                        pipeline_result = pipeline.process_hand(result)
+                        for event in pipeline_result.events:
+                            if event.kind is EventKind.POINTER_MOVE:
+                                dispatched_at_ns = time.monotonic_ns()
+                                metrics.record_dispatch(
+                                    result.capture_timestamp_ns, dispatched_at_ns
+                                )
+                        if renderer is not None:
+                            debug_frame = capture.latest.get_after(0)
+                            if debug_frame is not None:
+                                renderer.render(
+                                    debug_frame[1].image_bgr,
+                                    result,
+                                    pipeline_result.features,
+                                    pipeline_result.pose,
+                                    pipeline.gestures,
+                                )
+                        LOGGER.debug(
+                            "frame=%d capture=%d callback=%d consume=%d engagement=%s gesture=%s",
+                            result.frame_id,
+                            result.capture_timestamp_ns,
+                            result.callback_timestamp_ns,
+                            consumed_at_ns,
+                            pipeline.gestures.engagement.name,
+                            pipeline.gestures.gesture.name,
+                        )
                 time.sleep(0.001)
     finally:
         capture.stop()
-        safety.safe_release_all()
+        pipeline.safe_release_all()
+        if renderer is not None:
+            renderer.close()
         print(metrics.summary().render())
-        print(f"quartz_left_button_down_after_shutdown={safety.left_button_is_down()}")
+        print(pipeline.action_metrics.render())
+        print(f"quartz_left_button_down_after_shutdown={dispatcher.left_button_is_down()}")
     return 0
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Aang-Airbender Phase 0 cursor spike")
+    parser = argparse.ArgumentParser(description="Aang-Airbender Phase 1 core-five controller")
     parser.add_argument("--verbose", action="store_true", help="print per-result timing trace")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="show the configured every-Nth-frame landmark/FSM debug preview",
+    )
     parser.add_argument(
         "--duration-seconds",
         type=float,
@@ -123,9 +152,9 @@ def main() -> None:
         format="%(levelname)s %(name)s: %(message)s",
     )
     try:
-        raise SystemExit(run(duration_seconds=args.duration_seconds))
+        raise SystemExit(run(duration_seconds=args.duration_seconds, debug=args.debug))
     except Exception as error:
-        LOGGER.error("Phase 0 pipeline failed: %s", error)
+        LOGGER.error("Phase 1 pipeline failed: %s", error)
         raise SystemExit(1) from error
 
 

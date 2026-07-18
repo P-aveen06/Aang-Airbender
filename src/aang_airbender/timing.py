@@ -45,7 +45,7 @@ class TimingSummary:
 
         return "\n".join(
             (
-                "Aang-Airbender Phase 0 software timing summary",
+                "Aang-Airbender software timing summary",
                 f"measurement_duration_s={number(self.measurement_duration_seconds)} "
                 f"capture_fps={number(self.capture_fps)} callback_hz={number(self.callback_hz)}",
                 f"submitted={self.submitted_frames} callbacks={self.callback_results} "

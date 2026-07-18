@@ -82,7 +82,7 @@ def finger_joint_angles(local: Sequence[Point2]) -> tuple[tuple[float, ...], ...
     )
 
 
-def palm_facing_score(landmarks: Sequence[Point3]) -> float:
+def palm_facing_score(landmarks: Sequence[Point3], handedness: str | None) -> float:
     wrist = landmarks[0]
     index = landmarks[5]
     pinky = landmarks[17]
@@ -94,7 +94,10 @@ def palm_facing_score(landmarks: Sequence[Point3]) -> float:
         first[0] * second[1] - first[1] * second[0],
     )
     magnitude = math.sqrt(sum(component * component for component in normal))
-    return abs(normal[2]) / magnitude if magnitude > 0.0 else 0.0
+    if magnitude <= 0.0 or handedness not in ("Left", "Right"):
+        return 0.0
+    expected_sign = 1.0 if handedness == "Right" else -1.0
+    return max(0.0, expected_sign * normal[2] / magnitude)
 
 
 def extract_features(
@@ -140,12 +143,13 @@ def extract_features(
     return HandFeatures(
         palm_center=center,
         palm_orientation_radians=math.atan2(wrist.y - middle.y, wrist.x - middle.x),
-        palm_facing_score=palm_facing_score(hand.image_landmarks),
+        palm_facing_score=palm_facing_score(hand.image_landmarks, hand.handedness),
         hand_scale=scale,
         finger_extension=extended,
         finger_joint_angles_degrees=angles,
         pinch_ratio_index=distance(thumb_tip, index_tip) / scale,
         pinch_ratio_middle=distance(thumb_tip, middle_tip) / scale,
+        index_middle_separation_ratio=distance(index_tip, middle_tip) / scale,
         palm_velocity=velocity,
         anchor_velocity=velocity,
         confidence=hand.handedness_score,

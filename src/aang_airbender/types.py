@@ -48,6 +48,7 @@ class HandFeatures:
     finger_joint_angles_degrees: tuple[tuple[float, ...], ...]
     pinch_ratio_index: float
     pinch_ratio_middle: float
+    index_middle_separation_ratio: float
     palm_velocity: Point2
     anchor_velocity: Point2
     confidence: float
@@ -64,6 +65,7 @@ class IntentKind(Enum):
     CLUTCH_ON = auto()
     CLUTCH_OFF = auto()
     ENGAGE_REQUEST = auto()
+    RIGHT_CLICK = auto()
     CANCEL = auto()
 
 

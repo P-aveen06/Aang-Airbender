@@ -22,6 +22,7 @@ def features(
         finger_joint_angles_degrees=angles,
         pinch_ratio_index=index_ratio,
         pinch_ratio_middle=middle_ratio,
+        index_middle_separation_ratio=0.8,
         palm_velocity=Point2(0.0, 0.0),
         anchor_velocity=Point2(0.0, 0.0),
         confidence=0.99,
