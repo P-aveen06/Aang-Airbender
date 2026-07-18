@@ -2,7 +2,7 @@
 
 ## Phase 0 status
 
-**Status:** Phase 0 accepted; awaiting user merge decision
+**Status:** Phase 0 accepted and merged into `develop`
 **Author:** Codex  
 **Independent reviewer:** Claude  
 **Decision:** Phase 0 author gate passed; Claude round-2 verdict `APPROVE`
@@ -226,11 +226,13 @@ lint, and automated tests are verified. All Phase 0 author acceptance conditions
 
 ## Final user decision
 
-- [ ] Merge approved by user.
+- [x] Merge approved by user.
 - [ ] Merge deferred.
 - [ ] Phase 0 rejected.
 
-Notes:
+Notes: The project owner reported PR #1 merged into `develop` on 2026-07-18. Codex synchronized
+the local `develop` branch with `origin/develop` and created `codex/phase-1-core-five` from the
+merged commit before beginning Phase 1.
 
 ## Blockers and Phase 1 notes
 
@@ -238,4 +240,55 @@ Notes:
 - Phase 1 control tuning should increase usable cursor travel without making movement excessively
   sensitive; this is explicitly deferred from Phase 0.
 
-Do not begin Phase 1 automatically.
+## Phase 1 status
+
+**Status:** IN PROGRESS — implementation started with explicit project-owner authorization
+**Implementation branch:** `codex/phase-1-core-five`
+**Frozen scope and acceptance source:** `PLAN.md`, Phase 1 — Core five and safety
+**Validator contract:** `CLAUDE.md`
+
+### Phase 1 startup commands
+
+```bash
+git switch develop
+git pull --ff-only origin develop
+git switch -c codex/phase-1-core-five
+```
+
+### Initial Phase 1 decisions and unresolved evidence
+
+- Retain OpenCV AVFoundation based on the Phase 0 decision and evidence.
+- Implement the configurable central control box in absolute mode to improve usable cursor travel.
+  Do not add Phase 2 acceleration curves or relative mapping.
+- Recording scripts will be implemented, but landmark/video capture is explicit opt-in because it
+  records camera-derived data. The required target-Mac fixtures remain **UNVERIFIED** until recorded.
+- All Phase 1 target-Mac manual acceptance checks remain **UNVERIFIED** until the implementation is
+  complete and the exact checks are run and recorded.
+
+### Phase 1 implementation log
+
+```bash
+uv add --bounds exact pyyaml jsonschema
+.venv/bin/ruff format .
+.venv/bin/ruff check .
+.venv/bin/pytest
+```
+
+Dependency result: added exact direct pins `pyyaml==6.0.3` and `jsonschema==4.26.0`; lockfile
+updated. The initial sandboxed `uv add` could not access uv's user cache (`Operation not permitted`);
+the approved cache-access retry succeeded.
+
+First headless core slice:
+
+- Added versioned `config.yaml` and strict Draft 2020-12 schema validation. Unknown fields and
+  invalid cross-field relationships fail closed.
+- Added immutable `HandState`, `HandFeatures`, `GestureIntent`, and `SemanticEvent` domain types.
+- Added weighted five-landmark palm centroid, palm-relative joint geometry, normalized pinch
+  ratios, palm-facing score, and timestamp-derived velocity.
+- Added strict index point, relaxed pointer, two-finger, fist, wake-palm, pinch hysteresis, and
+  cross-pinch predicates.
+- Formatting: PASS. Lint: PASS.
+- Tests: 26 PASS, 1 environment-dependent model smoke test FAIL. The failure is the already-known
+  restricted Codex runner limitation: MediaPipe could not create `NSOpenGLPixelFormat` / GPU
+  service. The same official model smoke path passed on the unrestricted target Mac in Phase 0.
+  This Phase 1 target-Mac rerun remains **UNVERIFIED** until the complete pipeline is ready.
