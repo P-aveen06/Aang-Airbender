@@ -6,8 +6,8 @@ from pathlib import Path
 
 import cv2
 
-from aang_airbender.app import verify_native_environment
 from aang_airbender.capture import OpenCVLatestFrameCapture
+from aang_airbender.environment import verify_native_environment
 
 
 def main() -> None:

@@ -33,7 +33,7 @@ def state(landmarks: tuple[Point3, ...], timestamp_ns: int = 1_000_000_000) -> H
     return HandState(
         image_landmarks=landmarks,
         world_landmarks=(),
-        handedness="Right",
+        handedness="Left",
         handedness_score=0.99,
         frame_id=1,
         capture_timestamp_ns=timestamp_ns,
@@ -93,18 +93,19 @@ def test_extract_features_reports_open_fingers_scale_pinch_and_velocity() -> Non
 
     assert all(first.finger_extension)
     assert first.hand_scale > 0
+    assert first.image_hand_scale > 0
     assert math.isfinite(first.pinch_ratio_index)
     assert first.index_middle_separation_ratio > 0
     assert first.palm_facing_score == pytest.approx(1.0)
-    assert second.palm_velocity.x == pytest.approx(0.2)
+    assert second.palm_velocity.x == pytest.approx(0.07)
     assert second.palm_velocity.y == pytest.approx(0.0)
 
 
 def test_palm_facing_score_rejects_back_of_hand_orientation() -> None:
     config = load_config()
-    right = extract_features(state(synthetic_open_hand()), config)
-    left_state = replace(state(synthetic_open_hand()), handedness="Left")
-    left = extract_features(left_state, config)
+    left = extract_features(state(synthetic_open_hand()), config)
+    back_facing_state = replace(state(synthetic_open_hand()), handedness="Right")
+    back_facing = extract_features(back_facing_state, config)
 
-    assert right.palm_facing_score == pytest.approx(1.0)
-    assert left.palm_facing_score == pytest.approx(0.0)
+    assert left.palm_facing_score == pytest.approx(1.0)
+    assert back_facing.palm_facing_score == pytest.approx(0.0)

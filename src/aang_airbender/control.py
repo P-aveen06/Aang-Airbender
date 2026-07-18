@@ -102,6 +102,9 @@ class ControlEngine:
             self.pointer_filter.reset()
             self._scroll_last_timestamp_ns = None
             return ()
+        if intent.kind is IntentKind.ENGAGE_REQUEST:
+            self.pointer_filter.reset()
+            return ()
         if intent.kind is IntentKind.CLUTCH_ON:
             self._clutched = True
             return ()
@@ -121,9 +124,15 @@ class ControlEngine:
         if intent.kind is IntentKind.SCROLL_END:
             self._scroll_last_timestamp_ns = None
             return ()
-        if intent.kind is IntentKind.SCROLL_UPDATE and intent.velocity is not None:
+        if intent.kind is IntentKind.SCROLL_UPDATE:
+            if intent.velocity is None:
+                raise ValueError("SCROLL_UPDATE requires velocity")
             return self._scroll(intent)
-        if intent.kind is IntentKind.POINT and intent.point is not None and not self._clutched:
+        if intent.kind is IntentKind.POINT:
+            if intent.point is None:
+                raise ValueError("POINT requires a point")
+            if self._clutched:
+                return ()
             filtered = self.pointer_filter.apply(intent.point, intent.timestamp_ns)
             oriented = camera_to_display_orientation(
                 filtered, camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED
@@ -137,7 +146,7 @@ class ControlEngine:
                     y=mapped.y,
                 ),
             )
-        return ()
+        raise ValueError(f"Unsupported gesture intent: {intent.kind!r}")
 
     def _scroll(self, intent: GestureIntent) -> tuple[SemanticEvent, ...]:
         if self._scroll_last_timestamp_ns is None or intent.velocity is None:

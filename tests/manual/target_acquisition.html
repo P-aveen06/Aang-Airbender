@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aang-Airbender 44-unit target acquisition</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: #10151d; color: #f3f6fa; }
+    #status { position: fixed; z-index: 2; top: 16px; left: 16px; padding: 12px 14px;
+      border-radius: 10px; background: #1d2733e8; line-height: 1.45; }
+    #target { position: fixed; width: 44px; height: 44px; border: 0; border-radius: 50%;
+      background: #6de1ff; box-shadow: 0 0 0 4px #6de1ff40; cursor: pointer; }
+    #start { min-width: 100px; min-height: 44px; font: inherit; }
+    #result { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <section id="status">
+    <button id="start" type="button">Start 20 targets</button>
+    <div id="progress">Keep browser zoom at 100%.</div>
+    <div id="result"></div>
+  </section>
+  <button id="target" type="button" aria-label="44 pixel acquisition target" hidden></button>
+  <script>
+    const target = document.querySelector("#target");
+    const start = document.querySelector("#start");
+    const progress = document.querySelector("#progress");
+    const result = document.querySelector("#result");
+    const total = 20;
+    const diameter = 44;
+    const horizontalMargin = 60;
+    const topMargin = 130;
+    const bottomMargin = 60;
+    let seed = 20260718;
+    let hits = 0;
+    let misses = 0;
+    let shownAt = 0;
+    let durations = [];
+
+    function random() {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      return seed / 4294967296;
+    }
+
+    function percentile(values, fraction) {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.ceil(fraction * sorted.length) - 1];
+    }
+
+    function showTarget() {
+      if (hits === total) {
+        target.hidden = true;
+        const median = percentile(durations, 0.5);
+        const p95 = percentile(durations, 0.95);
+        result.textContent = `COMPLETE hits=${hits} misses=${misses}\n` +
+          `median_ms=${median.toFixed(0)} p95_ms=${p95.toFixed(0)}`;
+        progress.textContent = "Copy these results into PHASE_1_VALIDATION.md.";
+        return;
+      }
+      const usableWidth = Math.max(1, window.innerWidth - diameter - 2 * horizontalMargin);
+      const usableHeight = Math.max(1, window.innerHeight - diameter - topMargin - bottomMargin);
+      target.style.left = `${horizontalMargin + random() * usableWidth}px`;
+      target.style.top = `${topMargin + random() * usableHeight}px`;
+      target.hidden = false;
+      shownAt = performance.now();
+      progress.textContent = `Target ${hits + 1}/${total} · hits ${hits} · misses ${misses}`;
+    }
+
+    start.addEventListener("click", (event) => {
+      event.stopPropagation();
+      start.hidden = true;
+      hits = 0;
+      misses = 0;
+      durations = [];
+      seed = 20260718;
+      showTarget();
+    });
+
+    target.addEventListener("click", (event) => {
+      event.stopPropagation();
+      durations.push(performance.now() - shownAt);
+      hits += 1;
+      showTarget();
+    });
+
+    document.body.addEventListener("click", () => {
+      if (!target.hidden) {
+        misses += 1;
+        progress.textContent = `Target ${hits + 1}/${total} · hits ${hits} · misses ${misses}`;
+      }
+    });
+  </script>
+</body>
+</html>

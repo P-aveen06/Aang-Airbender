@@ -16,6 +16,7 @@ def feature(
         palm_orientation_radians=0,
         palm_facing_score=1,
         hand_scale=0.2,
+        image_hand_scale=0.2,
         finger_extension=(True, True, True, True, True),
         finger_joint_angles_degrees=((170, 170),) * 5,
         pinch_ratio_index=0.8,
@@ -181,3 +182,15 @@ def test_reacquisition_cancels_active_state_and_establishes_fresh_baseline() -> 
     assert intents[0].kind is IntentKind.PINCH_END
     assert intents[1].kind is IntentKind.CANCEL
     assert engine.engagement is EngagementState.ENGAGED
+
+
+def test_transition_history_is_fixed_size() -> None:
+    config = load_config()
+    config.section("debug")["state_transition_history_capacity"] = 2
+    engine = GestureEngine(config)
+
+    engine._transition_engagement(EngagementState.ARMING, 1, "one")
+    engine._transition_engagement(EngagementState.ENGAGED, 2, "two")
+    engine._transition_engagement(EngagementState.DISENGAGED, 3, "three")
+
+    assert [item.reason for item in engine.transitions] == ["two", "three"]

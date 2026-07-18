@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -46,7 +47,9 @@ class GestureEngine:
         self.config = config
         self.engagement = EngagementState.DISENGAGED
         self.gesture = GestureState.NEUTRAL
-        self.transitions: list[StateTransition] = []
+        self.transitions: deque[StateTransition] = deque(
+            maxlen=int(config.section("debug")["state_transition_history_capacity"])
+        )
         self._engagement_since_ns: int | None = None
         self._loss_since_ns: int | None = None
         self._loss_cancelled = False
@@ -64,7 +67,14 @@ class GestureEngine:
         self.engagement = state
         transition = StateTransition("engagement", previous.name, state.name, now_ns, reason)
         self.transitions.append(transition)
-        LOGGER.info("state_transition=%s", transition)
+        LOGGER.info(
+            "state_transition machine=%s previous=%s current=%s timestamp_ns=%d reason=%s",
+            transition.machine,
+            transition.previous,
+            transition.current,
+            transition.timestamp_ns,
+            transition.reason,
+        )
 
     def _transition_gesture(self, state: GestureState, now_ns: int, reason: str) -> None:
         if state is self.gesture:
@@ -73,7 +83,14 @@ class GestureEngine:
         self.gesture = state
         transition = StateTransition("gesture", previous.name, state.name, now_ns, reason)
         self.transitions.append(transition)
-        LOGGER.info("state_transition=%s", transition)
+        LOGGER.info(
+            "state_transition machine=%s previous=%s current=%s timestamp_ns=%d reason=%s",
+            transition.machine,
+            transition.previous,
+            transition.current,
+            transition.timestamp_ns,
+            transition.reason,
+        )
 
     def _cancel_active(self, now_ns: int, reason: str) -> list[GestureIntent]:
         intents: list[GestureIntent] = []
@@ -297,11 +314,17 @@ class GestureEngine:
         if now_ns - self._candidate_since_ns < self._duration_ns("timing", "pose_stability_ms"):
             return []
         control = self.config.section("control")
-        displacement = math.hypot(
-            features.palm_center.x - self._two_finger_origin.x,
-            features.palm_center.y - self._two_finger_origin.y,
+        displacement = (
+            math.hypot(
+                features.palm_center.x - self._two_finger_origin.x,
+                features.palm_center.y - self._two_finger_origin.y,
+            )
+            / features.image_hand_scale
         )
-        velocity = math.hypot(features.palm_velocity.x, features.palm_velocity.y)
+        velocity = (
+            math.hypot(features.palm_velocity.x, features.palm_velocity.y)
+            / features.image_hand_scale
+        )
         if displacement >= float(
             control["two_finger_scroll_displacement_ratio"]
         ) or velocity >= float(control["two_finger_scroll_velocity_ratio_per_second"]):

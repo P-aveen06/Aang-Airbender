@@ -5,11 +5,7 @@ import json
 import time
 from pathlib import Path
 
-from aang_airbender.app import model_path, verify_native_environment
-from aang_airbender.capture import OpenCVLatestFrameCapture
-from aang_airbender.config import load_config
-from aang_airbender.perception import LiveHandLandmarker
-from aang_airbender.replay import hand_state_to_record
+from aang_airbender.environment import model_path, verify_native_environment
 
 
 def main() -> None:
@@ -32,6 +28,11 @@ def main() -> None:
         parser.error(f"output already exists; refusing to overwrite: {args.output}")
 
     verify_native_environment()
+    from aang_airbender.capture import OpenCVLatestFrameCapture
+    from aang_airbender.config import load_config
+    from aang_airbender.perception import LiveHandLandmarker
+    from aang_airbender.replay import hand_state_to_record
+
     config = load_config()
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

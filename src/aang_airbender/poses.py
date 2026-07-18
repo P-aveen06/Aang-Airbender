@@ -82,7 +82,7 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
         two_finger=two_finger,
         fist=fist,
         wake_palm=wake,
-        index_pinch_closed=confidence_valid and index_closed and middle_cross_open,
+        index_pinch_closed=confidence_valid and index_closed and middle_cross_open and not fist,
         index_pinch_open=confidence_valid and index_open,
-        middle_pinch_closed=confidence_valid and middle_closed and index_cross_open,
+        middle_pinch_closed=confidence_valid and middle_closed and index_cross_open and not fist,
     )

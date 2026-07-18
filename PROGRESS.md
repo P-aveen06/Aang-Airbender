@@ -348,3 +348,70 @@ PREFLIGHT FAILED — Accessibility permission is missing for the Codex process
 This does not invalidate the earlier Phase 0 user-terminal permission evidence, but it prevents
 Codex from claiming a Phase 1 Quartz end-to-end run. Phase 1 real cursor/click/drag/scroll and
 objective release checks are **UNVERIFIED — requires the user's Accessibility-trusted terminal**.
+
+### Phase 1 author self-review fixes
+
+Codex reviewed the complete branch diff against the current `origin/develop`. The optional local
+gstack review workflow could not be used safely because its bootstrap requested a destructive reset
+of its own installation and unavailable interactive first-run prompts; no repository changes came
+from that tool. Codex continued with a direct line-by-line plan, architecture, enum-completeness,
+bounded-state, failure-path, and test audit.
+
+Findings fixed before the target-Mac acceptance run:
+
+- Quartz pointer movement now emits `kCGEventLeftMouseDragged` while the dispatcher owns the left
+  button; ordinary movement still emits `kCGEventMouseMoved`.
+- Right-click is represented as owned right-down/right-up operations. A failed right-up remains
+  tracked and is retried by `safe_release_all()`; conflicting right-click/scroll during drag fails
+  closed.
+- Two-finger arbitration uses configured low-pass velocity smoothing and motion normalized by the
+  image-space palm scale, instead of raw distance-dependent motion.
+- Camera-facing palm orientation now uses the correct handedness-dependent image-coordinate normal.
+  The synthetic fixture had represented a left palm and was relabeled accordingly.
+- Fist explicitly excludes both pinch predicates to prevent a curled hand becoming a click/drag.
+- Display topology is polled through Quartz. Any online-display ID/bounds change releases inputs and
+  stops with a restart instruction.
+- FSM transition history changed from an unbounded list to a configured 256-entry ring; logs now use
+  explicit parseable fields.
+- Intent and semantic-event dispatch are exhaustive and fail closed on an unsupported enum value.
+- Added `PHASE_1_VALIDATION.md` and a deterministic 44-unit manual target-acquisition page without
+  adding an application HUD or any Phase 2 product behavior.
+
+Review-regression validation:
+
+```text
+.venv/bin/ruff format .
+PASS
+.venv/bin/ruff check .
+All checks passed!
+.venv/bin/pytest -q -k 'not official_model_runs_in_live_stream_mode'
+54 passed, 1 deselected in 22.88s
+.venv/bin/python -m compileall -q src scripts tests
+PASS
+
+# WindowServer-capable full run
+.venv/bin/pytest
+55 passed (including official-model LIVE_STREAM smoke)
+
+# Read-only Quartz display probe
+DisplayBounds(x=0.0, y=0.0, width=1470.0, height=956.0)
+((1, DisplayBounds(x=0.0, y=0.0, width=1470.0, height=956.0)),)
+```
+
+Clean lockfile environment:
+
+```text
+test ! -e /private/tmp/aang-phase1-review-019f738a && \
+  UV_PROJECT_ENVIRONMENT=/private/tmp/aang-phase1-review-019f738a uv sync --frozen
+Using CPython 3.11.14
+Installed 44 packages
+
+MPLCONFIGDIR=/private/tmp/aang-phase1-matplotlib \
+  /private/tmp/aang-phase1-review-019f738a/bin/pytest
+55 passed in 60.59s
+```
+
+The required user-recorded 30-second landmark fixture, short video, five-minute core-five session,
+44-unit target acquisition evidence, 10-minute normal false-click session, 30-minute adversarial
+session, and real Quartz safety/loss checks remain **UNVERIFIED**. Exact commands and evidence fields
+are in `PHASE_1_VALIDATION.md`.

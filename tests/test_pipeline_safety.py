@@ -16,7 +16,7 @@ class FakeBackend:
         self.down_events = 0
         self.up_events = 0
 
-    def move_pointer(self, _x: float, _y: float) -> None:
+    def move_pointer(self, _x: float, _y: float, *, left_button_held: bool) -> None:
         pass
 
     def post_left_down(self) -> None:
@@ -27,7 +27,10 @@ class FakeBackend:
         self.down = False
         self.up_events += 1
 
-    def post_right_click(self) -> None:
+    def post_right_down(self) -> None:
+        pass
+
+    def post_right_up(self) -> None:
         pass
 
     def post_pixel_scroll(self, _dx: float, _dy: float) -> None:

@@ -44,6 +44,7 @@ class HandFeatures:
     palm_orientation_radians: float
     palm_facing_score: float
     hand_scale: float
+    image_hand_scale: float
     finger_extension: tuple[bool, bool, bool, bool, bool]
     finger_joint_angles_degrees: tuple[tuple[float, ...], ...]
     pinch_ratio_index: float

@@ -18,6 +18,7 @@ def features(
         palm_orientation_radians=0.0,
         palm_facing_score=facing,
         hand_scale=0.2,
+        image_hand_scale=0.2,
         finger_extension=extension,
         finger_joint_angles_degrees=angles,
         pinch_ratio_index=index_ratio,
@@ -78,3 +79,13 @@ def test_experimental_middle_pinch_requires_index_cross_pinch_open() -> None:
         features((False, True, False, False, False), index_ratio=0.3, middle_ratio=0.3),
         config,
     ).middle_pinch_closed
+
+
+def test_fist_cannot_be_misclassified_as_a_pinch() -> None:
+    pose = classify_pose(
+        features((False, False, False, False, False), index_ratio=0.3, middle_ratio=0.8),
+        load_config(),
+    )
+
+    assert pose.fist
+    assert not pose.index_pinch_closed

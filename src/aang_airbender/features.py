@@ -96,7 +96,9 @@ def palm_facing_score(landmarks: Sequence[Point3], handedness: str | None) -> fl
     magnitude = math.sqrt(sum(component * component for component in normal))
     if magnitude <= 0.0 or handedness not in ("Left", "Right"):
         return 0.0
-    expected_sign = 1.0 if handedness == "Right" else -1.0
+    # Image Y increases downward. A camera-facing right palm has index MCP to the
+    # image-right of pinky MCP, producing a negative 2D cross-product normal.
+    expected_sign = -1.0 if handedness == "Right" else 1.0
     return max(0.0, expected_sign * normal[2] / magnitude)
 
 
@@ -122,7 +124,8 @@ def extract_features(
         hand.world_landmarks if len(hand.world_landmarks) == 21 else hand.image_landmarks
     )
     scale = distance(scale_landmarks[5], scale_landmarks[17])
-    if scale <= 0.0:
+    image_scale = distance(hand.image_landmarks[5], hand.image_landmarks[17])
+    if scale <= 0.0 or image_scale <= 0.0:
         raise ValueError("Hand scale is zero")
     thumb_tip = scale_landmarks[4]
     index_tip = scale_landmarks[8]
@@ -134,9 +137,14 @@ def extract_features(
     )
     velocity = Point2(0.0, 0.0)
     if previous is not None and elapsed_seconds > 0.0:
-        velocity = Point2(
+        raw_velocity = Point2(
             (center.x - previous.palm_center.x) / elapsed_seconds,
             (center.y - previous.palm_center.y) / elapsed_seconds,
+        )
+        alpha = float(settings["velocity_smoothing_alpha"])
+        velocity = Point2(
+            alpha * raw_velocity.x + (1.0 - alpha) * previous.palm_velocity.x,
+            alpha * raw_velocity.y + (1.0 - alpha) * previous.palm_velocity.y,
         )
     wrist = hand.image_landmarks[0]
     middle = hand.image_landmarks[9]
@@ -145,6 +153,7 @@ def extract_features(
         palm_orientation_radians=math.atan2(wrist.y - middle.y, wrist.x - middle.x),
         palm_facing_score=palm_facing_score(hand.image_landmarks, hand.handedness),
         hand_scale=scale,
+        image_hand_scale=image_scale,
         finger_extension=extended,
         finger_joint_angles_degrees=angles,
         pinch_ratio_index=distance(thumb_tip, index_tip) / scale,
