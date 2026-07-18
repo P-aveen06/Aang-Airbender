@@ -490,3 +490,24 @@ All checks passed!
 uv run pytest -q
 57 passed in 4.29s
 ```
+
+### Core-gesture usability recording
+
+User-provided 117.01-second target-Mac recording (`Screen Recording 2026-07-18 at
+2.36.07 PM.mov`) shows that the current vocabulary is technically active but not yet usable enough
+for the Phase 1 acceptance gate:
+
+- open-palm pointing remains engaged and moves the cursor;
+- the two-finger pose enters `TWO_FINGER_PENDING`, commits `RIGHT_CLICK_COMMITTED`, and visibly
+  opens a Dock context menu;
+- the same two-finger pose also enters `SCROLLING`, including while the context menu is open, which
+  demonstrates that motion-versus-stillness arbitration is difficult for the user to predict;
+- the user's intended thumb-index circle/pinch is repeatedly reported as `pose=unknown`, so the
+  recording does not demonstrate a reliable left click or drag; and
+- removing the hand reaches `SUSPENDED`, but because a drag was not established this recording does
+  not verify objective button release during hand loss.
+
+Status: right-click emission is **PASS**, scroll-state entry is **PASS but usability-conflicted**,
+left click and drag are **FAIL/UNVERIFIED**, and hand-loss release during drag remains **UNVERIFIED**.
+The user requested a deliberate redesign of the core gesture vocabulary. No frozen gesture mapping
+or acceptance criterion has been changed pending project-owner approval.
