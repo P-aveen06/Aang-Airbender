@@ -12,7 +12,7 @@ from .capture import CapturedFrame
 from .config import Phase1Config
 from .coordinates import CAMERA_INPUT_IS_MIRRORED, corrected_handedness
 from .slots import LatestValueSlot
-from .types import HandFrame, HandRoles, HandState, Point3
+from .types import HandState, Point3
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +75,7 @@ class LiveHandLandmarker:
         config: Phase1Config,
         metrics: object | None = None,
     ) -> None:
-        self.latest = LatestValueSlot[HandFrame]()
+        self.latest = LatestValueSlot[HandState]()
         self._timestamps = StrictlyIncreasingMilliseconds()
         self._ledger = BoundedSubmissionLedger()
         self._metrics = metrics
@@ -86,7 +86,7 @@ class LiveHandLandmarker:
                 delegate=mp.tasks.BaseOptions.Delegate.CPU,
             ),
             running_mode=mp.tasks.vision.RunningMode.LIVE_STREAM,
-            num_hands=int(perception["num_hands"]),
+            num_hands=1,
             min_hand_detection_confidence=float(perception["min_hand_detection_confidence"]),
             min_hand_presence_confidence=float(perception["min_hand_presence_confidence"]),
             min_tracking_confidence=float(perception["min_tracking_confidence"]),
@@ -126,46 +126,38 @@ class LiveHandLandmarker:
             self._metrics.record_callback(callback_at_ns)
         if metadata is None:
             return
-        hands: list[HandState] = []
-        for index, raw_image_landmarks in enumerate(result.hand_landmarks):
+        image_landmarks: tuple[Point3, ...] = ()
+        world_landmarks: tuple[Point3, ...] = ()
+        handedness: str | None = None
+        handedness_score = 0.0
+        if result.hand_landmarks:
             image_landmarks = tuple(
-                Point3(float(item.x), float(item.y), float(item.z)) for item in raw_image_landmarks
+                Point3(float(item.x), float(item.y), float(item.z))
+                for item in result.hand_landmarks[0]
             )
-            world_landmarks: tuple[Point3, ...] = ()
-            if index < len(result.hand_world_landmarks):
-                world_landmarks = tuple(
-                    Point3(float(item.x), float(item.y), float(item.z))
-                    for item in result.hand_world_landmarks[index]
-                )
-            handedness: str | None = None
-            handedness_score = 0.0
-            if index < len(result.handedness) and result.handedness[index]:
-                category = result.handedness[index][0]
-                handedness = corrected_handedness(
-                    category.category_name,
-                    camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED,
-                )
-                handedness_score = float(category.score)
-            hands.append(
-                HandState(
-                    image_landmarks=image_landmarks,
-                    world_landmarks=world_landmarks,
-                    handedness=handedness,
-                    handedness_score=handedness_score,
-                    frame_id=metadata.frame_id,
-                    capture_timestamp_ns=metadata.captured_at_ns,
-                    mediapipe_timestamp_ms=metadata.mediapipe_timestamp_ms,
-                    callback_timestamp_ns=callback_at_ns,
-                    valid=len(image_landmarks) == 21,
-                )
+        if result.hand_world_landmarks:
+            world_landmarks = tuple(
+                Point3(float(item.x), float(item.y), float(item.z))
+                for item in result.hand_world_landmarks[0]
             )
+        if result.handedness and result.handedness[0]:
+            category = result.handedness[0][0]
+            handedness = corrected_handedness(
+                category.category_name,
+                camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED,
+            )
+            handedness_score = float(category.score)
         self.latest.publish(
-            HandFrame(
-                hands=tuple(hands),
+            HandState(
+                image_landmarks=image_landmarks,
+                world_landmarks=world_landmarks,
+                handedness=handedness,
+                handedness_score=handedness_score,
                 frame_id=metadata.frame_id,
                 capture_timestamp_ns=metadata.captured_at_ns,
                 mediapipe_timestamp_ms=metadata.mediapipe_timestamp_ms,
                 callback_timestamp_ns=callback_at_ns,
+                valid=len(image_landmarks) == 21,
             )
         )
 
@@ -177,21 +169,3 @@ class LiveHandLandmarker:
 
     def __exit__(self, *_: object) -> None:
         self.close()
-
-
-def assign_hand_roles(frame: HandFrame, *, min_confidence: float) -> HandRoles:
-    """Assign physical roles without relying on MediaPipe result ordering.
-
-    A duplicate label is ambiguous and therefore invalidates that role. This is
-    intentionally stricter than choosing the highest score: a transient role
-    swap must never become a click.
-    """
-
-    candidates: dict[str, list[HandState]] = {"Right": [], "Left": []}
-    for hand in frame.hands:
-        if hand.valid and hand.handedness in candidates and hand.handedness_score >= min_confidence:
-            candidates[hand.handedness].append(hand)
-    return HandRoles(
-        right=candidates["Right"][0] if len(candidates["Right"]) == 1 else None,
-        left=candidates["Left"][0] if len(candidates["Left"]) == 1 else None,
-    )

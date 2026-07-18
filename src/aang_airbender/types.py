@@ -39,23 +39,7 @@ class HandState:
 
 
 @dataclass(frozen=True, slots=True)
-class HandFrame:
-    hands: tuple[HandState, ...]
-    frame_id: int
-    capture_timestamp_ns: int
-    mediapipe_timestamp_ms: int
-    callback_timestamp_ns: int
-
-
-@dataclass(frozen=True, slots=True)
-class HandRoles:
-    right: HandState | None
-    left: HandState | None
-
-
-@dataclass(frozen=True, slots=True)
 class HandFeatures:
-    index_tip: Point2
     palm_center: Point2
     palm_orientation_radians: float
     palm_facing_score: float
@@ -75,9 +59,15 @@ class HandFeatures:
 
 class IntentKind(Enum):
     POINT = auto()
-    CLICK_ARM = auto()
-    CLICK_COMMIT = auto()
-    CLICK_CANCEL = auto()
+    PINCH_START = auto()
+    PINCH_END = auto()
+    SCROLL_START = auto()
+    SCROLL_UPDATE = auto()
+    SCROLL_END = auto()
+    CLUTCH_ON = auto()
+    CLUTCH_OFF = auto()
+    ENGAGE_REQUEST = auto()
+    RIGHT_CLICK = auto()
     CANCEL = auto()
 
 
@@ -86,15 +76,17 @@ class GestureIntent:
     kind: IntentKind
     timestamp_ns: int
     point: Point2 | None = None
+    velocity: Point2 | None = None
+    pinch_kind: str | None = None
     reason: str | None = None
 
 
 class EventKind(Enum):
     POINTER_MOVE = auto()
-    LEFT_CLICK = auto()
-    # Retained only for controlled safe-release verification and terminal cleanup.
     LEFT_DOWN = auto()
     LEFT_UP = auto()
+    RIGHT_CLICK = auto()
+    SCROLL = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +95,5 @@ class SemanticEvent:
     timestamp_ns: int
     x: float | None = None
     y: float | None = None
+    pixel_dx: float | None = None
+    pixel_dy: float | None = None

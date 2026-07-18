@@ -9,18 +9,15 @@ from .control import ControlEngine
 from .coordinates import DisplayBounds
 from .features import extract_features
 from .fsm import GestureEngine
-from .perception import assign_hand_roles
 from .poses import PoseClassification, classify_pose
 from .telemetry import ActionMetrics
-from .types import GestureIntent, HandFeatures, HandFrame, HandState, IntentKind, SemanticEvent
+from .types import GestureIntent, HandFeatures, HandState, IntentKind, SemanticEvent
 
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:
-    right_features: HandFeatures | None
-    left_features: HandFeatures | None
-    right_pose: PoseClassification | None
-    left_pose: PoseClassification | None
+    features: HandFeatures | None
+    pose: PoseClassification | None
     events: tuple[SemanticEvent, ...]
 
 
@@ -36,62 +33,21 @@ class Phase1Pipeline:
         self.control = ControlEngine(config, bounds)
         self.gestures = GestureEngine(config)
         self.action_metrics = ActionMetrics()
-        self._previous_right_features: HandFeatures | None = None
-        self._previous_left_features: HandFeatures | None = None
-
-    def process_frame(self, frame: HandFrame) -> PipelineResult:
-        confidence = float(self.config.section("features")["min_valid_confidence"])
-        roles = assign_hand_roles(frame, min_confidence=confidence)
-        right_features, right_pose = self._extract_role(roles.right, role="right")
-        left_features, left_pose = self._extract_role(roles.left, role="left")
-        intents = self.gestures.update(
-            right_features,
-            right_pose,
-            left_features,
-            left_pose,
-            frame.capture_timestamp_ns,
-        )
-        events = self._dispatch_intents(intents)
-        return PipelineResult(right_features, left_features, right_pose, left_pose, events)
+        self._previous_features: HandFeatures | None = None
 
     def process_hand(self, hand: HandState) -> PipelineResult:
-        """Compatibility helper for v1 fixture readers; live code uses process_frame."""
-
-        return self.process_frame(
-            HandFrame(
-                hands=(hand,) if hand.valid else (),
-                frame_id=hand.frame_id,
-                capture_timestamp_ns=hand.capture_timestamp_ns,
-                mediapipe_timestamp_ms=hand.mediapipe_timestamp_ms,
-                callback_timestamp_ns=hand.callback_timestamp_ns,
-            )
-        )
-
-    def _extract_role(
-        self, hand: HandState | None, *, role: str
-    ) -> tuple[HandFeatures | None, PoseClassification | None]:
-        previous = (
-            self._previous_right_features if role == "right" else self._previous_left_features
-        )
-        if hand is None:
-            if role == "right":
-                self._previous_right_features = None
-            else:
-                self._previous_left_features = None
-            return None, None
-        try:
-            features = extract_features(hand, self.config, previous=previous)
-        except ValueError:
-            if role == "right":
-                self._previous_right_features = None
-            else:
-                self._previous_left_features = None
-            return None, None
-        if role == "right":
-            self._previous_right_features = features
+        if hand.valid:
+            features = extract_features(hand, self.config, previous=self._previous_features)
+            self._previous_features = features
+            pose = classify_pose(features, self.config)
+            intents = self.gestures.update(features, pose, hand.capture_timestamp_ns)
         else:
-            self._previous_left_features = features
-        return features, classify_pose(features, self.config)
+            features = None
+            pose = None
+            self._previous_features = None
+            intents = self.gestures.update(None, None, hand.capture_timestamp_ns)
+        events = self._dispatch_intents(intents)
+        return PipelineResult(features, pose, events)
 
     def _dispatch_intents(self, intents: list[GestureIntent]) -> tuple[SemanticEvent, ...]:
         events: list[SemanticEvent] = []

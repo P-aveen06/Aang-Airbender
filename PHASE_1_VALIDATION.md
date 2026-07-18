@@ -36,53 +36,51 @@ uv run python scripts/record_video_fixture.py \
 - [ ] Short video opens locally and corresponds to the landmark-test conditions.
 - [ ] The owner has reviewed both files for privacy before adding either to git.
 
-## 3. Right-point/left-click smoke session
+## 3. Core-five smoke session
 
 ```bash
 uv run python -m aang_airbender.app --duration-seconds 300
 ```
 
-During the five-minute session, do not touch the trackpad after starting:
+During the five-minute session, do not touch the trackpad after engagement:
 
-- [ ] Show a physical-right index-point pose ☝🏻; after about 200 ms, move the pointer with the right
-      index fingertip.
-- [ ] Break the right index-point pose and confirm pointer output freezes immediately.
-- [ ] While right-pointing, show the physical left hand open, then pinch its thumb and index. Confirm
-      the cursor freezes when the pinch begins and one click occurs only after a stable pinch is
-      released.
-- [ ] Open an application from the Dock using the left-hand pinch-and-release click.
-- [ ] Hold the left pinch and confirm it neither repeats the click nor begins a drag.
-- [ ] Show open palms, a right-hand pinch, two fingers, a fist, and thumbs-down; confirm none moves
-      the pointer or emits any click.
+- [ ] Hold a facing open palm for the configured dwell and engage.
+- [ ] Move the pointer using palm motion; confirm the anchor feels independent of fingertip motion.
+- [ ] Browse and open an application using thumb-index pinch-and-release clicks.
+- [ ] Hold a thumb-index pinch to drag a disposable file or safe test object, then confirm release.
+- [ ] Emit exactly one right click by closing and releasing a thumb-middle pinch, then returning to
+      neutral.
+- [ ] Scroll a page using two fingers plus vertical motion.
+- [ ] Hold two fingers still and confirm no pointer, click, or scroll event occurs.
+- [ ] Confirm fist releases any active drag before clutching/freezing the pointer, and does not
+      disengage even when held longer than one second.
+- [ ] Confirm fist release re-baselines the pointer without a jump.
+- [ ] Hold thumbs-down for the configured one-second dwell and confirm disengagement.
 - [ ] Confirm cursor travel is sufficient without feeling excessively sensitive.
-- [ ] Confirm cursor movement feels responsive without significant jitter or trailing lag.
 - [ ] Record timing summary, action counters, failures, and observations in `PROGRESS.md`.
 
 ## 4. Required confusion gates
 
 Run these deliberately before calling the vocabulary v1:
 
-- [ ] Move the right hand in ordinary poses; confirm only the strict index-point pose moves the
-      cursor.
-- [ ] Pinch the physical right thumb and index; confirm it never emits a click.
-- [ ] Point with the physical left hand; confirm it never moves the pointer.
-- [ ] Bring the left hand into view already pinched; confirm it cannot click until opened and then
-      pinched again.
-- [ ] Form a left fist slowly and quickly; confirm it cannot become a pinch click while curling.
-- [ ] Lose the left role during a pending or armed click; confirm no click occurs.
-- [ ] Lose the right role during a pending or armed click; confirm no click occurs and cursor output
-      freezes.
-- [ ] Cross the hands and vary their entry order; confirm debug roles remain physical R pointer and
-      physical L click, or fail closed—never swap actions.
-- [ ] In Finder and at least one browser, perform two rapid complete left-pinch cycles and confirm
-      two single-click events are produced, with Quartz click state `1` for both.
+- [ ] Alternate thumb-index and thumb-middle pinches; record any wrong-button click. The ambiguous
+      cross-pinch zone must emit nothing.
+- [ ] Form a fist slowly and quickly; confirm no left or right click occurs while fingers curl.
+- [ ] Alternate fist and thumbs-down; confirm fist never disengages and thumbs-down never clutches.
+- [ ] Drop the hand naturally out of frame; confirm this follows hand-loss grace/full-timeout paths,
+      never the explicit thumbs-down path.
+- [ ] In Finder and at least one browser, perform two complete thumb-index pinch cycles at normal
+      double-click cadence and confirm the target application interprets them as a double-click.
+
+Application-level double-click behavior is a target-Mac acceptance check. The automated tests prove
+two complete `LEFT_DOWN`/`LEFT_UP` cycles are emitted and the second Quartz pair receives click state
+`2` inside configured time/distance allowances, but do not substitute for this real-app check.
 
 ## 5. Target acquisition
 
 Open `tests/manual/target_acquisition.html` in Safari or Chromium. It presents twenty targets whose
 diameter is exactly 44 CSS pixels (normally 44 macOS display-coordinate units at default browser
-zoom). Keep browser zoom at 100%, show the right index-point pose, start the run, and acquire every
-target with the left-hand pinch click.
+zoom). Keep browser zoom at 100%, engage Aang-Airbender, start the run, and acquire every target.
 
 - Browser/version:
 - Browser zoom:
@@ -111,11 +109,12 @@ Do not average the two sessions or reinterpret the thresholds.
 
 ## 7. Safety and loss paths
 
-- [ ] Remove either hand during a pending pinch and confirm no click occurs.
-- [ ] Remove the right hand for longer than the configured 200 ms grace and confirm no button
-      remains held.
-- [ ] Press Control-C and confirm the shutdown state prints `False`.
-- [ ] Close/block the camera and confirm the failure path leaves no button held.
+- [ ] Begin a drag, remove the hand, and confirm release within the configured 200 ms grace period.
+- [ ] Allow full no-hand disengagement and confirm no button remains held.
+- [ ] Begin a drag, form a fist, and confirm left-button release occurs before clutch activation.
+- [ ] Begin a drag, hold thumbs-down through its dwell, and confirm release before disengagement.
+- [ ] Press Control-C during a drag and confirm the shutdown state prints `False`.
+- [ ] Close/block the camera during a drag and confirm the failure path releases the button.
 - [ ] Run `scripts/verify_safe_release.py`; both objective Quartz assertions pass.
 
 ## Acceptance status

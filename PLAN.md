@@ -71,7 +71,7 @@ profiles/    bundle-identifier-based per-app behavior
 
 - Uses MediaPipe Tasks `HandLandmarker` in `LIVE_STREAM` mode.
 - Initial configuration:
-  - `num_hands=2`
+  - `num_hands=1`
   - `min_hand_detection_confidence=0.7`
   - `min_hand_presence_confidence=0.7`
   - `min_tracking_confidence=0.6`
@@ -79,28 +79,23 @@ profiles/    bundle-identifier-based per-app behavior
 - Treats live-stream callbacks as asynchronous, tolerant of dropped input frames, and executed in a MediaPipe-controlled callback context.
 - The callback performs no UI work, OS-event dispatch, blocking work, or direct FSM mutation. It creates an immutable result and overwrites a single-slot latest-result handoff for the pipeline thread.
 - Pins the MediaPipe package and model asset version.
-- Emits one immutable frame containing zero, one, or two immutable hand results:
+- Emits:
 
 ```python
-HandFrame {
-    hands: tuple[HandState, ...],
-    frame_id,
-    capture_timestamp,
-    mediapipe_timestamp_ms,
-    callback_timestamp,
-}
-
 HandState {
     image_landmarks[21],
     world_landmarks[21],
     handedness,
     handedness_score,
+    frame_id,
+    capture_timestamp,
+    mediapipe_timestamp_ms,
+    callback_timestamp,
     valid
 }
 ```
 
 - Defines and tests a single mirroring convention. Pointer X mirroring, preview mirroring, and handedness correction must not be handled independently in several modules.
-- Assigns physical left/right roles from corrected handedness and confidence, never MediaPipe result-array ordering. Missing, low-confidence, or duplicate role results fail closed.
 
 #### `features/`
 
@@ -108,7 +103,6 @@ Calculates reusable geometry and motion once per result:
 
 ```python
 HandFeatures {
-    index_tip,
     palm_center,
     palm_orientation,
     palm_facing_score,
@@ -128,8 +122,7 @@ Rules:
 
 - Prefer world-space distances when sufficiently stable.
 - Fall back to robust image-space normalization when needed.
-- The active Phase 1 pointer anchor is the right-hand index fingertip at image landmark 8.
-- Palm center remains reusable geometry and is a weighted centroid of landmarks 0, 5, 9, 13, and 17 rather than only the midpoint of 5 and 17.
+- Initial palm center is a weighted centroid of landmarks 0, 5, 9, 13, and 17 rather than only the midpoint of 5 and 17.
 - Finger extension is based on joint angles in a palm-relative coordinate system, not only fingertip Y-position.
 - `hand_scale` must remain usable under moderate palm rotation. Start with world-space `dist(5,17)` and evaluate a robust combined scale during calibration.
 
@@ -141,38 +134,50 @@ Rules:
 - Emits intentions, not screen coordinates or OS calls:
 
 ```python
-POINT(index_tip)
-CLICK_ARM
-CLICK_COMMIT
-CLICK_CANCEL
+POINT(anchor)
+PINCH_START(kind)
+PINCH_END(kind)
+SCROLL_START(origin)
+SCROLL_UPDATE(velocity)
+SCROLL_END
+CLUTCH_ON
+CLUTCH_OFF
+ENGAGE_REQUEST
+MACRO_REQUEST(id)
 CANCEL
 ```
 
 - `UNKNOWN` emits nothing.
-- Dangerous recognitions are prioritized: safety, pending-click cancellation, left-pinch lifecycle, right-index point, unknown.
+- Dangerous recognitions are prioritized over cosmetic recognitions: safety, active-button release, active continuous gesture, pinch, scroll, point.
 
 #### `control/`
 
-- Applies a low-latency One Euro filter or another validated filter to the right index-fingertip pointer anchor.
+- Applies One Euro filtering or another validated filter to pointer anchors.
 - Converts gesture intent into semantic OS events.
-- Supports absolute mapping from the configured control box to the main display.
-- Freezes the pointer at its current mapped location when a left-hand pinch candidate begins. A stable pinch followed by release commits exactly one click at that frozen location; an invalid or lost role cancels it.
+- Supports absolute mapping first, then relative movement with acceleration and clutch.
+- Owns pointer acceleration, dead zones, display mapping, scroll gain, scroll momentum, and mode baselines.
+- Re-establishes baselines whenever entering pointer, scroll, or relative-control modes to avoid jumps.
 - Emits:
 
 ```python
 POINTER_MOVE(screen_x, screen_y)
-LEFT_CLICK(screen_x, screen_y)
+LEFT_DOWN
+LEFT_UP
+RIGHT_CLICK
+SCROLL(pixel_dx, pixel_dy)
+KEY_CHORD(keys)
+MEDIA_ACTION(action)
 ```
 
 #### `actions/`
 
 - Thin Quartz and AppKit dispatch layer.
 - Knows nothing about hands.
-- Posts pointer movement and atomic single left clicks.
+- Posts mouse movement, button, pixel-scroll, keyboard, and supported media events.
 - Tracks locally held buttons and modifier keys.
 - Implements idempotent `safe_release_all()`.
 - Calls `safe_release_all()` on every abnormal or terminal path.
-- Ensures each committed pinch is one single-click event. Two rapid pinch cycles remain two single clicks and are not promoted to an explicit double-click.
+- Tests double-click behavior explicitly instead of assuming two ordinary clicks are always interpreted identically by every application.
 
 #### `hud/`
 
@@ -225,29 +230,28 @@ These rules are mandatory:
 1. Every emitted `LEFT_DOWN` has exactly one eventual `LEFT_UP`.
 2. Tracking loss longer than the short grace period releases all held inputs immediately; it does not wait for the full disengagement timeout.
 3. Disengagement, camera failure, model failure, exception, profile reload, display topology change, app shutdown, and panic action call `safe_release_all()`.
-4. Pending clicks are cancelled when confidence drops or either required hand role becomes invalid or disappears.
+4. Pending clicks are cancelled when confidence drops or the recognised hand becomes invalid.
 5. A newly reacquired hand must remain stable briefly before cursor movement resumes.
 6. Physical trackpad and mouse input always remain available.
 7. The panic mechanism must include an external recovery path. A keyboard shortcut handled only by the same frozen process is not sufficient by itself.
 
-### 2.3 Phase 1 v1.2 state machine
+### 2.3 Master state machine
 
 ```text
-INACTIVE
-    ├─ right index-point pose stable for configured dwell ─▶ POINTING
-    └─ fatal subsystem error ───────────────────────────────▶ FAULT
-POINTING
-    ├─ right index-point pose breaks or right hand is lost ─▶ INACTIVE
-    ├─ left thumb-index pinch closes ───────────────────────▶ CLICK_PENDING
-    └─ fatal subsystem error ───────────────────────────────▶ FAULT
-CLICK_PENDING
-    ├─ pinch remains closed for configured stability ───────▶ CLICK_ARMED
-    ├─ pinch opens early or either role becomes invalid ────▶ POINTING or INACTIVE, with click cancelled
-    └─ fatal subsystem error ───────────────────────────────▶ FAULT
-CLICK_ARMED
-    ├─ left pinch opens ────────────────────────────────────▶ POINTING, with one single click at the frozen anchor
-    ├─ either hand role becomes invalid ────────────────────▶ POINTING or INACTIVE, with click cancelled
-    └─ fatal subsystem error ───────────────────────────────▶ FAULT
+DISENGAGED
+    └─ wake pose stable for configured dwell ─▶ ARMING
+ARMING
+    ├─ dwell completes with valid confidence ─▶ ENGAGED
+    └─ pose breaks / confidence falls ─────────▶ DISENGAGED
+ENGAGED
+    ├─ brief tracking loss ────────────────────▶ SUSPENDED
+    ├─ no hand for configured timeout ─────────▶ DISENGAGED
+    ├─ explicit HUD or keyboard action ────────▶ DISENGAGED
+    └─ fatal subsystem error ──────────────────▶ FAULT
+SUSPENDED
+    ├─ hand reacquired and stabilised ─────────▶ ENGAGED
+    ├─ timeout expires ────────────────────────▶ DISENGAGED
+    └─ fatal subsystem error ──────────────────▶ FAULT
 FAULT
     └─ user restarts or explicitly resets after safe release
 ```
@@ -255,37 +259,70 @@ FAULT
 Initial timing hypotheses:
 
 ```text
-right-point stability:       80–120 ms
-left-pinch stability:        80–120 ms
+wake dwell:                  800–1,000 ms
+pose stability:              80–120 ms
 short hand-loss grace:       150–250 ms
+full no-hand disengagement:  2–3 s
 reacquisition stability:     150–250 ms
+```
+
+Within `ENGAGED`:
+
+```text
+NEUTRAL
+POINTING
+PINCH_PENDING
+TWO_FINGER_PENDING
+DRAGGING
+SCROLLING
+RIGHT_CLICK_COMMITTED
+CLUTCHED
+UNKNOWN
 ```
 
 Rules:
 
-- Movement is active only while a stable physical-right-hand index-point pose is recognised.
-- Only a physical-left-hand thumb-index pinch may arm a click, and only while right-hand pointing is valid.
-- The click anchor freezes when the pinch candidate begins and remains frozen until release or cancellation.
-- No OS button is held across perception frames; click commit posts one owned down/up pair atomically.
-- Loss of either required role cancels the pending click immediately. Right-hand loss also freezes pointer output.
+- While dragging, only pinch release, safety cancellation, and disengagement may interrupt the drag.
+- Scroll and relative-pointer modes establish a fresh baseline when entered.
 - `UNKNOWN` never dispatches an action.
-- A reacquired right-hand point pose must remain stable for the configured interval before cursor movement resumes.
+- Discrete gestures return through neutral unless an explicit transition is tested and allowed.
+- The wake-pose meaning is recognised only while disengaged or arming. While engaged, a relaxed open hand may belong to the pointer-pose family without toggling engagement.
 
 ---
 
-## 3. Gesture vocabulary — v1.2 owner-approved Phase 1 scope
+## 3. Gesture vocabulary — v1.1 candidate
 
-Owner-approved exception dated 2026-07-18: this v1.2 vocabulary supersedes v1.1 for Phase 1. All former Phase 1 meanings—wake/open palm, palm pointer, right-hand click, drag, right-click, scroll, fist clutch, thumbs-down, and gesture double-click—are disabled, not reassigned. Safety cleanup remains mandatory.
+The vocabulary is an initial candidate, not permanently locked. It becomes v1 only after confusion-matrix testing confirms acceptable safety and usability.
 
-| Physical role and pose | Strict initial detection | Action |
+| Pose, initially right hand | Strict initial detection | Action |
 |---|---|---|
-| Right hand: index-point ☝🏻 | Index extended; middle, ring, and pinky curled; thumb unconstrained; confidence valid and pose stable for the configured interval | Move cursor from the One Euro-filtered index fingertip at landmark 8 |
-| Left hand: thumb-index pinch | Normalized thumb-index ratio enters the closed threshold while a valid right-hand point controls the cursor | Freeze the current pointer location; after the configured pinch stability, release commits exactly one left click at the frozen location |
-| Either required role lost or invalid during click | Physical-left or physical-right role is absent, ambiguous, duplicated, or below confidence | Cancel the click; never emit a partial click |
+| Pointer-pose family | Valid tracked hand with no higher-priority command pose; confidence valid | Move pointer using the One Euro-filtered, weighted palm centroid of landmarks 0, 5, 9, 13, and 17; never use the index fingertip as the pointer anchor |
+| Thumb–index pinch | Index pinch ratio enters closed threshold while middle-pinch ratio remains clearly open | Left button down; release threshold emits left button up |
+| Held thumb–index pinch | A recognised thumb–index pinch remains closed | Drag by keeping the left button down; there is no separate drag gesture |
+| Thumb–middle pinch | Middle pinch ratio enters closed threshold while the index-pinch ratio remains clearly open | Arm right-click; emit exactly once on release, then require neutral |
+| Two-finger scroll pose | Index and middle extended; ring and pinky curled; fingers sufficiently separated | Enter `TWO_FINGER_PENDING`; commit only when cumulative displacement or filtered velocity exceeds the configured threshold; scroll never moves the pointer |
+| Fist | All four fingers curled for configured dwell, with pinch recognition suppressed while the fist forms | Release any held input, then clutch: pointer frozen; fist release establishes a new relative baseline |
+| Open palm, palm facing camera | All digits extended, stable, valid orientation; engagement meaning recognised only while disengaged | Engage |
+| Thumbs-down | Thumb extended downward with the other fingers curled, stable for the configured 1 s dwell | Disengage; the full no-hand timeout remains a second disengagement path |
+| Hand loss | Recognised hand absent | After the short configured grace period, release all held inputs; after the full configured timeout, disengage |
+| Two-finger stillness dwell, disabled fallback | Two-finger scroll pose remains inside a stillness radius for the configured dwell, and the fallback is explicitly enabled in configuration | Right-click once, then require neutral; disabled by default and not part of the v1.1 vocabulary |
 
-### 3.1 Disabled gestures
+Cross-pinch exclusion is mandatory: an index pinch is valid only while the middle pinch is clearly open, a middle pinch is valid only while the index pinch is clearly open, and the ambiguous zone emits neither action.
 
-Open palm, palm movement, right-hand pinch, held-pinch drag, thumb-middle pinch, two fingers, fist, thumbs-down, and all other poses emit no action in Phase 1 v1.2. They must not remain reachable behind a runtime flag in the active Phase 1 pipeline.
+### 3.1 Two-finger scroll arbitration
+
+```text
+NEUTRAL
+    └─ stable two-finger pose ─▶ TWO_FINGER_PENDING
+TWO_FINGER_PENDING
+    ├─ cumulative displacement or filtered velocity exceeds threshold ─▶ SCROLLING
+    └─ pose breaks before commitment ──────────────────────────────────▶ NEUTRAL
+```
+
+- Two fingers at rest do nothing.
+- Committing to `SCROLLING` locks the episode to scrolling until the pose ends.
+- Scroll entry uses both cumulative displacement and filtered velocity so a deliberately slow scroll can still commit without assigning stillness another default meaning.
+- The two-finger stillness-dwell right-click recognizer remains available only as a disabled configuration fallback. When explicitly enabled, it retains branch locking and cannot transition directly between right-click and scrolling.
 
 ### 3.2 Pinch hysteresis
 
@@ -296,15 +333,21 @@ closed: ratio < 0.35
 open:   ratio > 0.50
 ```
 
-The interval between them is a dead zone. Calibration may recommend per-user values. No fixed threshold is considered final until measured across distance, lighting, hand rotation, and the supported left-click hand.
+The interval between them is a dead zone. Calibration may recommend per-user values. No fixed threshold is considered final until measured across distance, lighting, hand rotation, and both supported hands.
 
 ### 3.3 Gesture priority
 
 ```text
 fault and emergency handling
-→ cancellation of an armed or pending click
-→ active left-pinch lifecycle
-→ right index-point recognizer
+→ release of active held inputs
+→ explicit disengagement dwell
+→ fist recognition, including release-before-clutch
+→ active drag continuation or pinch release
+→ active scroll continuation or end
+→ active two-finger episode branch lock
+→ cross-exclusive thumb–index and thumb–middle pinch recognizers
+→ two-finger pending arbitration
+→ point recognizer
 → unknown
 ```
 
@@ -312,17 +355,19 @@ fault and emergency handling
 
 - Pinch metrics are normalized for hand size and camera distance.
 - Hysteresis prevents boundary flicker.
-- Physical handedness defines roles: only the right hand moves the pointer and only the left hand clicks. Result ordering never defines roles.
-- Pointer anchoring uses right-hand image landmark 8 and is low-latency One Euro filtered.
-- Pointer movement requires a strict right index-point pose; ordinary hand motion emits nothing.
-- A click is anchored at the mapped pointer location present when the left pinch candidate begins.
-- A stable left pinch commits only on release; holding it has no drag meaning.
-- No OS left button is held across perception frames.
+- Cross-pinch exclusion makes the ambiguous index/middle pinch zone non-actionable.
+- Pointer anchoring uses the weighted palm centroid of landmarks 0, 5, 9, 13, and 17, not a pinching fingertip.
+- Pointer anchoring is One Euro filtered.
 - All gesture dwells, grace periods, and stability checks use monotonic elapsed time and validated configuration values.
-- Missing, invalid, low-confidence, or ambiguous role assignment fails closed.
-- Loss of either required role cancels a pending click; right-hand loss freezes pointer output.
-- Each committed pinch posts exactly one single click. Rapid successive pinches do not request explicit double-click semantics.
-- All non-v1.2 gestures are disabled and emit nothing.
+- Engagement and disengagement use distinct interaction paths.
+- Similar gestures are not assigned to different destructive actions without confusion testing.
+- Fist formation suppresses pinch recognition and releases held inputs before entering clutch.
+- Fist release re-baselines the pointer before movement resumes.
+- A held thumb–index pinch is the drag state; drag has no separate gesture.
+- Thumb–middle pinch emits right-click only on release and must return through neutral.
+- Two-finger stillness never emits an action in the default vocabulary; scroll requires configured displacement or velocity and never moves the pointer.
+- Pointer, scroll, and command poses are mutually exclusive whenever possible.
+- Natural-scrolling direction is a first-class configuration option.
 
 ---
 
@@ -350,38 +395,37 @@ fault and emergency handling
 
 Do not add the full gesture vocabulary, calibration, HUD, acceleration curves, configuration migration, or production abstractions during this spike.
 
-### Phase 1 — Right-point, left-click, and safety (3–5 focused days)
+### Phase 1 — Core five and safety (3–5 focused days)
 
 **Goal:** provide basic trackpad replacement with safe failure behavior.
 
 - [ ] Record a 30-second landmark fixture and a short video fixture using `scripts/record_landmarks.py` and `scripts/record_video_fixture.py`.
 - [ ] Implement `HandState`, `HandFeatures`, `GestureIntent`, and `SemanticEvent` types.
-- [ ] Configure two-hand tracking and assign physical left/right roles by corrected handedness, never result ordering.
 - [ ] Implement palm-relative finger-angle classification.
-- [ ] Add the strict physical-right index-point predicate and physical-left thumb-index pinch hysteresis.
+- [ ] Add strict index-point, relaxed-open-hand pointer, two-finger, fist, wake-palm, and pinch predicates.
 - [ ] Add fixture-based unit tests for geometry and pose classification.
-- [ ] Implement the v1.2 point/click FSM with timestamp-based stability and cancellation transitions.
-- [ ] Implement left-pinch hysteresis and anchor one click at the location where the pinch candidate begins.
-- [ ] Disable all former Phase 1 gesture meanings in the active pipeline.
-- [ ] Add low-latency One Euro filtering to the right index fingertip and test stationary jitter plus moving response.
+- [ ] Implement the top-level engagement FSM and inner gesture FSM with timestamp-based transitions.
+- [ ] Implement left-pinch hysteresis and cross-pinch exclusion.
+- [ ] Implement `TWO_FINGER_PENDING` arbitration and keep both right-click candidates behind configuration until confusion tests select one.
+- [ ] Add One Euro filtering to the palm centroid; start with `min_cutoff=1.0`, `beta=0.007`, then tune empirically.
 - [ ] Implement absolute mapping from a configurable central control box to the active display region.
 - [ ] Define mirroring and handedness behavior in one module and test it.
-- [ ] Emit an atomic real single left click on stable pinch release; never hold a button across frames.
+- [ ] Emit real left-button down and up events; implement safe drag release.
+- [ ] Implement right-click once, using the safer validated candidate.
+- [ ] Implement pixel scroll without momentum initially.
+- [ ] Implement clutch and fresh-baseline behavior; fist has no disengagement meaning in v1.
 - [ ] Implement `safe_release_all()` and call it from all terminal and error paths.
 - [ ] Add `config.yaml` plus schema validation. No untracked magic thresholds.
 - [ ] Add `--debug` rendering of landmarks, pose, confidence, FSM state, and timing every Nth frame; off by default.
 - [ ] Add structured state-transition logs and false-action counters.
-- [ ] Add role-order, role-loss, click-anchor, click-cancellation, and repeated-single-click regression tests.
 
 **Accept:**
 
-- Point at and open applications without touching the trackpad for five minutes.
+- Browse, open applications, drag a file, and scroll a page without touching the trackpad for five minutes.
 - Targets at least 44 display-coordinate units wide are acquired reliably in absolute mode.
 - Zero false clicks during 10 minutes of normal pointing.
 - Fewer than one false click during a 30-minute adversarial test containing normal conversational hand motion.
-- Right-hand pinch, left-hand pointing, open palms, fists, two fingers, thumbs-down, and hand loss emit no click.
-- Loss or invalidation of either required hand role cancels a pending click without a down event.
-- Each committed left pinch emits exactly one down/up pair with single-click semantics at the frozen anchor.
+- Hand loss during drag releases the mouse within the short grace period.
 - Disengagement, exception simulation, camera shutdown, and process exit release all held inputs.
 
 ### Phase 1.5 — Bundle and permission viability (1–2 days)
@@ -588,18 +632,21 @@ intended gesture × recognised gesture
 Prioritize dangerous confusions:
 
 ```text
-right index-point → left click
-ordinary right-hand motion → pointer movement
-left ordinary motion or fist → left click
-right thumb-index pinch → left click
-left thumb-index pinch without valid right point → left click
-MediaPipe result reordering or duplicate handedness → role swap
-left or right role loss during a pending click → partial click
-right-hand reacquisition → pointer jump
-two left-pinch cycles → explicit double-click semantics
+point → left click
+scroll → left click
+thumb–index pinch ↔ thumb–middle pinch (wrong-button click)
+fist formation → pinch or click
+fist clutch → thumbs-down disengagement
+natural hand drop → thumbs-down disengagement
+ordinary hand motion → engage
+brief hand loss → unintended disengage
+tracking loss during drag
+reacquisition → pointer jump
+two thumb–index pinch cycles → application-level double-click
+swipe → unintended system action
 ```
 
-A gesture is not promoted into the stable vocabulary until its dangerous confusion rates are acceptable. Before v1 promotion, tests must explicitly cover role/order stability, ordinary motion versus strict right pointing, wrong-hand pinch, role loss during click, non-clicking left-hand poses, pointer reacquisition, and two rapid left-pinch cycles remaining two single clicks.
+A gesture is not promoted into the stable vocabulary until its dangerous confusion rates are acceptable. Before v1 promotion, tests must explicitly cover the thumb–index versus thumb–middle pair, false pinch during fist formation, fist versus thumbs-down, natural hand drop versus thumbs-down, and application-level double-click behavior from two thumb–index pinch cycles.
 
 ### 5.4 Configuration discipline
 
@@ -643,10 +690,10 @@ Debug recording is opt-in and clearly indicated in the HUD.
 
 | Risk | Mitigation |
 |---|---|
-| Ghost actions during natural gesturing | Movement only during a strict physical-right index-point pose; clicks only from a stable physical-left pinch; elapsed-time stability, fail-closed role assignment, confusion testing |
+| Ghost actions during natural gesturing | Disengaged-by-default operation, rare wake pose, strict predicates, elapsed-time dwell, neutral transitions, cooldowns, confusion testing |
 | Stuck mouse button or modifier | Idempotent `safe_release_all()`, short hand-loss release, terminal-path cleanup, replay tests |
-| Gesture overlap | Two-role vocabulary with one action per role, strict predicates, recognition priority, and all other gesture meanings disabled |
-| Arm fatigue, “gorilla arm” | Small absolute control box, elbow-on-desk ergonomics, short sessions during tuning, and later evidence-based pointer-mode work outside Phase 1 |
+| Gesture overlap | Mutually exclusive predicates, recognition priority, cross-pinch exclusion, two-finger pending arbitration with branch locking, provisional vocabulary |
+| Arm fatigue, “gorilla arm” | Relative mode, clutch, low-amplitude acceleration, elbow-on-desk ergonomics, short sessions during tuning |
 | Lighting and backlight instability | Confidence floors, calibration, exposure guidance, video regression tests, fault-safe suspension |
 | Palm rotation breaks 2D geometry | Palm-relative joint angles, world landmarks, robust scale normalization, orientation validity checks |
 | OpenCV camera buffering | Latest-frame slot, timestamped frame-age measurement, native AVFoundation fallback |
@@ -654,10 +701,10 @@ Debug recording is opt-in and clearly indicated in the HUD.
 | Battery use on fanless MacBook Air | 640×480 input, no normal preview, inference throttling, measured—not assumed—power savings, native fallback if needed |
 | Permission mismatch between Terminal and app bundle | Phase 1.5 bundle test, onboarding authorization checks, stable bundle identity |
 | Keyboard shortcuts differ by user | Configurable bindings, onboarding validation, profile-aware mappings |
-| Rapid pinches accidentally request double-click semantics | Atomic single-click events with click count one and regression tests across representative apps |
+| Double-click semantics vary by application | Explicit click-state and timing tests across representative apps |
 | Multiple displays complicate mapping | Default to main-display support until global coordinates and topology-change reset are explicitly implemented and tested |
 | Physical mouse and gesture controller fight | Preserve physical input; optionally suspend gesture output after detected physical pointer activity |
-| Handedness or result ordering swaps roles | Central mirroring correction, confidence floors, physical-role assignment by label, duplicate-role fail-closed behavior, and reordered-result tests |
+| Right-click conflicts with left click or scroll | Cross-pinch exclusion; two-finger motion-versus-stillness arbitration; require neutral after right-click; keep thumb–middle pinch experimental |
 | Product name conflict | Treat Aang-Airbender as a working name until name and trademark review |
 | Privacy concerns | Local processing, no frame retention by default, explicit recording indicator and controls |
 
@@ -747,12 +794,12 @@ aang-airbender/
 
 These questions should be answered with measured evidence during the indicated phase rather than by preference alone.
 
-1. **Wake pose — decided 2026-07-18 v1.2:** No wake gesture in Phase 1. Cursor output exists only while a stable physical-right index-point pose is recognised.
-2. **Disengagement — decided 2026-07-18 v1.2:** No disengagement gesture in Phase 1. Breaking or losing the right index-point pose freezes output; normal terminal and failure cleanup remain mandatory.
-3. **Right-click — decided 2026-07-18 v1.2:** Disabled in Phase 1. Do not retain thumb-middle or two-finger right-click behavior in the active pipeline.
-4. **Hand support — decided 2026-07-18 v1.2:** Track up to two hands simultaneously. The physical right hand is pointer-only and the physical left hand is click-only; roles are not interchangeable.
-5. **Scroll direction — deferred:** Scrolling is disabled in Phase 1 v1.2. Decide direction only if scrolling returns in a later owner-approved vocabulary.
-6. **Pointer mode — decided for Phase 1 v1.2:** Use absolute right-index-fingertip mapping. Evaluate other modes only in a separately approved phase.
+1. **Wake pose:** Is open palm rare enough in actual use, or should engagement use a more distinctive pose or HUD action? Decide through adversarial testing in Phase 1.
+2. **Disengagement — decided 2026-07-18:** Use a thumbs-down pose with a configured 1 s monotonic dwell as the explicit gesture path. Keep the configured 2–3 s no-hand timeout as the second path; the short hand-loss grace still releases held inputs first. Fist remains clutch only.
+3. **Right-click — decided 2026-07-18:** Use cross-exclusive thumb–middle pinch and emit one right-click on release, followed by neutral. Two fingers are scroll-only in the default vocabulary; retain stationary two-finger dwell only as a disabled configuration fallback.
+4. **Hand support:** Start with right hand for reduced complexity. Add handedness-agnostic support only after mirroring and geometry tests pass.
+5. **Scroll direction:** Provide a natural-scrolling configuration flag from the first implementation.
+6. **Pointer mode:** Keep both absolute and relative modes; select the default after Fitts, fatigue, and reliability testing.
 7. **Camera backend:** Continue with OpenCV only if measured frame age and packaging are acceptable. Otherwise adopt native AVFoundation.
 8. **Display scope:** Support only the main display initially. Add global-display mapping later as an explicitly scoped and tested enhancement, including topology-change reset behavior.
 9. **Idle power mode:** Call it inference throttling until battery tests demonstrate real camera or power reduction.

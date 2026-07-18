@@ -23,4 +23,5 @@ def test_official_model_runs_in_live_stream_mode() -> None:
     assert result is not None
     _version, value = result
     assert value.frame_id == 1
-    assert value.hands == ()
+    assert not value.valid
+    assert value.image_landmarks == ()

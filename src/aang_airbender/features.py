@@ -128,9 +128,8 @@ def extract_features(
     if scale <= 0.0 or image_scale <= 0.0:
         raise ValueError("Hand scale is zero")
     thumb_tip = scale_landmarks[4]
-    scale_index_tip = scale_landmarks[8]
+    index_tip = scale_landmarks[8]
     middle_tip = scale_landmarks[12]
-    image_index_tip = Point2(hand.image_landmarks[8].x, hand.image_landmarks[8].y)
     image_thumb_mcp = hand.image_landmarks[2]
     image_thumb_tip = hand.image_landmarks[4]
     elapsed_seconds = (
@@ -139,7 +138,6 @@ def extract_features(
         else 0.0
     )
     velocity = Point2(0.0, 0.0)
-    anchor_velocity = Point2(0.0, 0.0)
     if previous is not None and elapsed_seconds > 0.0:
         raw_velocity = Point2(
             (center.x - previous.palm_center.x) / elapsed_seconds,
@@ -150,18 +148,9 @@ def extract_features(
             alpha * raw_velocity.x + (1.0 - alpha) * previous.palm_velocity.x,
             alpha * raw_velocity.y + (1.0 - alpha) * previous.palm_velocity.y,
         )
-        raw_anchor_velocity = Point2(
-            (image_index_tip.x - previous.index_tip.x) / elapsed_seconds,
-            (image_index_tip.y - previous.index_tip.y) / elapsed_seconds,
-        )
-        anchor_velocity = Point2(
-            alpha * raw_anchor_velocity.x + (1.0 - alpha) * previous.anchor_velocity.x,
-            alpha * raw_anchor_velocity.y + (1.0 - alpha) * previous.anchor_velocity.y,
-        )
     wrist = hand.image_landmarks[0]
     middle = hand.image_landmarks[9]
     return HandFeatures(
-        index_tip=image_index_tip,
         palm_center=center,
         palm_orientation_radians=math.atan2(wrist.y - middle.y, wrist.x - middle.x),
         palm_facing_score=palm_facing_score(hand.image_landmarks, hand.handedness),
@@ -169,12 +158,12 @@ def extract_features(
         image_hand_scale=image_scale,
         finger_extension=extended,
         finger_joint_angles_degrees=angles,
-        pinch_ratio_index=distance(thumb_tip, scale_index_tip) / scale,
+        pinch_ratio_index=distance(thumb_tip, index_tip) / scale,
         pinch_ratio_middle=distance(thumb_tip, middle_tip) / scale,
-        index_middle_separation_ratio=distance(scale_index_tip, middle_tip) / scale,
+        index_middle_separation_ratio=distance(index_tip, middle_tip) / scale,
         thumb_direction_down_ratio=(image_thumb_tip.y - image_thumb_mcp.y) / image_scale,
         palm_velocity=velocity,
-        anchor_velocity=anchor_velocity,
+        anchor_velocity=velocity,
         confidence=hand.handedness_score,
         timestamp_ns=hand.capture_timestamp_ns,
     )
