@@ -11,7 +11,7 @@ from threading import Event
 
 from .capture import CaptureError, OpenCVLatestFrameCapture
 from .cursor import QuartzCursor, map_to_screen, palm_midpoint
-from .perception import LiveHandLandmarker
+from .perception import LiveHandLandmarker, is_strictly_newer
 from .safety import MouseSafety, QuartzMouseEventBackend
 from .timing import TimingMetrics
 
@@ -77,7 +77,9 @@ def run(*, duration_seconds: float | None = None) -> int:
                     metrics.record_result_slot_drops(next_result_version - result_version - 1)
                     result_version = next_result_version
                     consumed_at_ns = time.monotonic_ns()
-                    if result.mediapipe_timestamp_ms <= last_result_timestamp_ms:
+                    if not is_strictly_newer(
+                        result.mediapipe_timestamp_ms, last_result_timestamp_ms
+                    ):
                         metrics.record_stale()
                     else:
                         last_result_timestamp_ms = result.mediapipe_timestamp_ms

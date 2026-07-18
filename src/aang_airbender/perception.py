@@ -47,6 +47,10 @@ class StrictlyIncreasingMilliseconds:
         return value
 
 
+def is_strictly_newer(timestamp_ms: int, last_consumed_timestamp_ms: int) -> bool:
+    return timestamp_ms > last_consumed_timestamp_ms
+
+
 class BoundedSubmissionLedger:
     """Fixed-size timestamp metadata, not a frame/result work queue."""
 
