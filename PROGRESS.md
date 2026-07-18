@@ -457,3 +457,17 @@ uv run pytest -q
 Live camera confirmation after the fix is **UNVERIFIED — requires the user's rerun**. Expected debug
 sequence is `wake` → `ARMING` → `ENGAGED` after holding the open palm for about 0.9 seconds; cursor
 movement should then be available for the pointer pose.
+
+Follow-up target-Mac screen recording (`Screen Recording 2026-07-18 at 2.11.23 PM.mov`, 47.19 s)
+confirms the regression fix on the live AVFoundation path:
+
+- no-hand startup is `pose=none`, `DISENGAGED`, `NEUTRAL`;
+- the open palm is consistently recognised as `pose=point,wake` at 0.96–0.99 confidence;
+- engagement reaches and remains `ENGAGED`, with gesture state `POINTING`;
+- the visible macOS cursor traverses the display in correspondence with palm motion, including both
+  horizontal directions; and
+- observed callback latency in sampled debug frames is approximately 19.0–25.5 ms.
+
+Result: live open-palm engagement and visible cursor following are **PASS** for this recording. This
+evidence does not by itself cover clicking, dragging, right-clicking, scrolling, hand-loss safety,
+the five-minute session, or the longer false-action acceptance runs.
