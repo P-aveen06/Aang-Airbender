@@ -10,16 +10,19 @@ from .types import Finger, HandFeatures
 class PoseClassification:
     strict_index_point: bool
     relaxed_pointer: bool
+    pointer_active: bool
     two_finger: bool
     fist: bool
+    thumbs_down: bool
     wake_palm: bool
     index_pinch_closed: bool
     index_pinch_open: bool
     middle_pinch_closed: bool
+    middle_pinch_open: bool
 
     @property
     def pointer_family(self) -> bool:
-        return self.strict_index_point or self.relaxed_pointer
+        return self.pointer_active
 
 
 def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassification:
@@ -31,9 +34,10 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
     index_closed = features.pinch_ratio_index < float(pinch["closed_ratio"])
     index_open = features.pinch_ratio_index > float(pinch["open_ratio"])
     middle_closed = features.pinch_ratio_middle < float(pinch["closed_ratio"])
+    middle_open = features.pinch_ratio_middle > float(pinch["open_ratio"])
     middle_cross_open = features.pinch_ratio_middle > float(pinch["cross_pinch_open_ratio"])
     index_cross_open = features.pinch_ratio_index > float(pinch["cross_pinch_open_ratio"])
-    non_pinching = index_open and not middle_closed
+    non_pinching = index_open and middle_open
 
     index = extended[Finger.INDEX.value]
     middle = extended[Finger.MIDDLE.value]
@@ -63,9 +67,16 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
         and separation_valid
         and non_pinching
     )
-    fist = confidence_valid and all(
+    four_fingers_curled = all(
         curled[finger.value] for finger in (Finger.INDEX, Finger.MIDDLE, Finger.RING, Finger.PINKY)
     )
+    thumbs_down = (
+        confidence_valid
+        and thumb
+        and four_fingers_curled
+        and features.thumb_direction_down_ratio >= float(poses["min_thumb_down_direction_ratio"])
+    )
+    fist = confidence_valid and four_fingers_curled and not thumbs_down
     wake = (
         confidence_valid
         and thumb
@@ -76,13 +87,25 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
         and features.palm_facing_score >= float(feature_settings["min_palm_facing_score"])
         and non_pinching
     )
+    index_pinch = (
+        confidence_valid and index_closed and middle_cross_open and not four_fingers_curled
+    )
+    middle_pinch = (
+        confidence_valid and middle_closed and index_cross_open and not four_fingers_curled
+    )
+    pointer_active = (
+        confidence_valid and non_pinching and not two_finger and not fist and not thumbs_down
+    )
     return PoseClassification(
         strict_index_point=strict_point and not two_finger and non_pinching,
         relaxed_pointer=relaxed,
+        pointer_active=pointer_active,
         two_finger=two_finger,
         fist=fist,
+        thumbs_down=thumbs_down,
         wake_palm=wake,
-        index_pinch_closed=confidence_valid and index_closed and middle_cross_open and not fist,
+        index_pinch_closed=index_pinch,
         index_pinch_open=confidence_valid and index_open,
-        middle_pinch_closed=confidence_valid and middle_closed and index_cross_open and not fist,
+        middle_pinch_closed=middle_pinch,
+        middle_pinch_open=confidence_valid and middle_open and index_cross_open,
     )

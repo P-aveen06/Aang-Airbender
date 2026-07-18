@@ -130,6 +130,8 @@ def extract_features(
     thumb_tip = scale_landmarks[4]
     index_tip = scale_landmarks[8]
     middle_tip = scale_landmarks[12]
+    image_thumb_mcp = hand.image_landmarks[2]
+    image_thumb_tip = hand.image_landmarks[4]
     elapsed_seconds = (
         (hand.capture_timestamp_ns - previous.timestamp_ns) / 1_000_000_000
         if previous is not None
@@ -159,6 +161,7 @@ def extract_features(
         pinch_ratio_index=distance(thumb_tip, index_tip) / scale,
         pinch_ratio_middle=distance(thumb_tip, middle_tip) / scale,
         index_middle_separation_ratio=distance(index_tip, middle_tip) / scale,
+        thumb_direction_down_ratio=(image_thumb_tip.y - image_thumb_mcp.y) / image_scale,
         palm_velocity=velocity,
         anchor_velocity=velocity,
         confidence=hand.handedness_score,

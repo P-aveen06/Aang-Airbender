@@ -38,25 +38,30 @@
     },
     "poses": {
       "type": "object", "additionalProperties": false,
-      "required": ["min_two_finger_separation_ratio"],
-      "properties": {"min_two_finger_separation_ratio": {"type": "number", "exclusiveMinimum": 0}}
+      "required": ["min_two_finger_separation_ratio", "min_thumb_down_direction_ratio"],
+      "properties": {
+        "min_two_finger_separation_ratio": {"type": "number", "exclusiveMinimum": 0},
+        "min_thumb_down_direction_ratio": {"type": "number", "exclusiveMinimum": 0}
+      }
     },
     "timing": {
       "type": "object", "additionalProperties": false,
-      "required": ["pose_stability_ms", "wake_dwell_ms", "hand_loss_grace_ms", "disengage_timeout_ms", "reacquisition_stability_ms", "right_click_dwell_ms", "display_topology_check_ms"],
+      "required": ["pose_stability_ms", "wake_dwell_ms", "thumbs_down_dwell_ms", "hand_loss_grace_ms", "disengage_timeout_ms", "reacquisition_stability_ms", "right_click_dwell_ms", "double_click_interval_ms", "display_topology_check_ms"],
       "properties": {
         "pose_stability_ms": {"type": "integer", "minimum": 0},
         "wake_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
+        "thumbs_down_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
         "hand_loss_grace_ms": {"type": "integer", "exclusiveMinimum": 0},
         "disengage_timeout_ms": {"type": "integer", "exclusiveMinimum": 0},
         "reacquisition_stability_ms": {"type": "integer", "minimum": 0},
         "right_click_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
+        "double_click_interval_ms": {"type": "integer", "exclusiveMinimum": 0},
         "display_topology_check_ms": {"type": "integer", "exclusiveMinimum": 0}
       }
     },
     "control": {
       "type": "object", "additionalProperties": false,
-      "required": ["one_euro_min_cutoff", "one_euro_beta", "one_euro_derivative_cutoff", "control_box", "scroll_gain", "natural_scrolling", "two_finger_scroll_displacement_ratio", "two_finger_scroll_velocity_ratio_per_second", "two_finger_stillness_radius_ratio"],
+      "required": ["one_euro_min_cutoff", "one_euro_beta", "one_euro_derivative_cutoff", "control_box", "scroll_gain", "natural_scrolling", "two_finger_scroll_displacement_ratio", "two_finger_scroll_velocity_ratio_per_second", "two_finger_stillness_radius_ratio", "double_click_max_distance_pixels"],
       "properties": {
         "one_euro_min_cutoff": {"type": "number", "exclusiveMinimum": 0},
         "one_euro_beta": {"type": "number", "minimum": 0},
@@ -75,15 +80,16 @@
         "natural_scrolling": {"type": "boolean"},
         "two_finger_scroll_displacement_ratio": {"type": "number", "exclusiveMinimum": 0},
         "two_finger_scroll_velocity_ratio_per_second": {"type": "number", "exclusiveMinimum": 0},
-        "two_finger_stillness_radius_ratio": {"type": "number", "exclusiveMinimum": 0}
+        "two_finger_stillness_radius_ratio": {"type": "number", "exclusiveMinimum": 0},
+        "double_click_max_distance_pixels": {"type": "number", "exclusiveMinimum": 0}
       }
     },
     "gestures": {
       "type": "object", "additionalProperties": false,
-      "required": ["right_click_candidate", "enable_experimental_middle_pinch_right_click"],
+      "required": ["right_click_candidate", "enable_two_finger_dwell_right_click_fallback"],
       "properties": {
         "right_click_candidate": {"enum": ["two_finger_dwell", "middle_pinch"]},
-        "enable_experimental_middle_pinch_right_click": {"type": "boolean"}
+        "enable_two_finger_dwell_right_click_fallback": {"type": "boolean"}
       }
     },
     "debug": {

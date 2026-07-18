@@ -11,6 +11,7 @@ def features(
     index_ratio: float = 0.8,
     middle_ratio: float = 0.8,
     facing: float = 1.0,
+    thumb_down_ratio: float = -0.5,
 ) -> HandFeatures:
     angles = tuple((170.0, 170.0) if item else (90.0, 90.0) for item in extension)
     return HandFeatures(
@@ -24,6 +25,7 @@ def features(
         pinch_ratio_index=index_ratio,
         pinch_ratio_middle=middle_ratio,
         index_middle_separation_ratio=0.8,
+        thumb_direction_down_ratio=thumb_down_ratio,
         palm_velocity=Point2(0.0, 0.0),
         anchor_velocity=Point2(0.0, 0.0),
         confidence=0.99,
@@ -68,7 +70,7 @@ def test_index_pinch_uses_hysteresis_and_cross_pinch_exclusion() -> None:
     assert classify_pose(replace(base, pinch_ratio_index=0.60), config).index_pinch_open
 
 
-def test_experimental_middle_pinch_requires_index_cross_pinch_open() -> None:
+def test_middle_pinch_requires_index_cross_pinch_open() -> None:
     config = load_config()
 
     assert classify_pose(
@@ -81,6 +83,17 @@ def test_experimental_middle_pinch_requires_index_cross_pinch_open() -> None:
     ).middle_pinch_closed
 
 
+def test_ambiguous_cross_pinch_zone_emits_neither_pinch() -> None:
+    classified = classify_pose(
+        features((True, True, True, True, True), index_ratio=0.3, middle_ratio=0.3),
+        load_config(),
+    )
+
+    assert not classified.index_pinch_closed
+    assert not classified.middle_pinch_closed
+    assert not classified.pointer_active
+
+
 def test_fist_cannot_be_misclassified_as_a_pinch() -> None:
     pose = classify_pose(
         features((False, False, False, False, False), index_ratio=0.3, middle_ratio=0.8),
@@ -89,3 +102,26 @@ def test_fist_cannot_be_misclassified_as_a_pinch() -> None:
 
     assert pose.fist
     assert not pose.index_pinch_closed
+    assert not pose.middle_pinch_closed
+
+
+def test_fist_and_thumbs_down_are_mutually_exclusive() -> None:
+    config = load_config()
+    fist = classify_pose(features((False, False, False, False, False)), config)
+    fist_with_side_thumb = classify_pose(
+        features((True, False, False, False, False), thumb_down_ratio=-0.5),
+        config,
+    )
+    thumbs_down = classify_pose(
+        features(
+            (True, False, False, False, False),
+            thumb_down_ratio=0.6,
+        ),
+        config,
+    )
+
+    assert fist.fist and not fist.thumbs_down
+    assert fist_with_side_thumb.fist and not fist_with_side_thumb.thumbs_down
+    assert thumbs_down.thumbs_down and not thumbs_down.fist
+    assert not thumbs_down.index_pinch_closed
+    assert not thumbs_down.middle_pinch_closed

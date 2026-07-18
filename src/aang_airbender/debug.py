@@ -62,9 +62,11 @@ class DebugRenderer:
                     name
                     for name, active in (
                         ("point", pose.pointer_family),
-                        ("pinch", pose.index_pinch_closed),
+                        ("index-pinch", pose.index_pinch_closed),
+                        ("middle-pinch", pose.middle_pinch_closed),
                         ("two", pose.two_finger),
                         ("fist", pose.fist),
+                        ("thumb-down", pose.thumbs_down),
                         ("wake", pose.wake_palm),
                     )
                     if active

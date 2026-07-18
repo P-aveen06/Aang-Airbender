@@ -19,11 +19,11 @@ class FakeBackend:
     def move_pointer(self, _x: float, _y: float, *, left_button_held: bool) -> None:
         pass
 
-    def post_left_down(self) -> None:
+    def post_left_down(self, _click_count: int) -> None:
         self.down = True
         self.down_events += 1
 
-    def post_left_up(self) -> None:
+    def post_left_up(self, _click_count: int) -> None:
         self.down = False
         self.up_events += 1
 
@@ -41,11 +41,18 @@ class FakeBackend:
 
 
 def pipeline() -> tuple[Phase1Pipeline, FakeBackend]:
+    config = load_config()
     backend = FakeBackend()
     runtime = Phase1Pipeline(
-        load_config(),
+        config,
         DisplayBounds(0, 0, 1000, 500),
-        ActionDispatcher(backend),
+        ActionDispatcher(
+            backend,
+            double_click_interval_ms=int(config.section("timing")["double_click_interval_ms"]),
+            double_click_max_distance_pixels=float(
+                config.section("control")["double_click_max_distance_pixels"]
+            ),
+        ),
     )
     return runtime, backend
 

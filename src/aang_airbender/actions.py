@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from threading import Lock
 from typing import Protocol
 
@@ -10,9 +11,9 @@ from .types import EventKind, SemanticEvent
 class ActionBackend(Protocol):
     def move_pointer(self, x: float, y: float, *, left_button_held: bool) -> None: ...
 
-    def post_left_down(self) -> None: ...
+    def post_left_down(self, click_count: int) -> None: ...
 
-    def post_left_up(self) -> None: ...
+    def post_left_up(self, click_count: int) -> None: ...
 
     def post_right_down(self) -> None: ...
 
@@ -68,10 +69,23 @@ class QuartzActionBackend:
         location = self._quartz.CGEventGetLocation(event)
         return float(location.x), float(location.y)
 
-    def _post_mouse(self, event_type: int, button: int, location: tuple[float, float]) -> None:
+    def _post_mouse(
+        self,
+        event_type: int,
+        button: int,
+        location: tuple[float, float],
+        *,
+        click_count: int | None = None,
+    ) -> None:
         event = self._quartz.CGEventCreateMouseEvent(None, event_type, location, button)
         if event is None:
             raise RuntimeError("Quartz could not create a mouse event")
+        if click_count is not None:
+            self._quartz.CGEventSetIntegerValueField(
+                event,
+                self._quartz.kCGMouseEventClickState,
+                click_count,
+            )
         self._quartz.CGEventPost(self._quartz.kCGHIDEventTap, event)
 
     def move_pointer(self, x: float, y: float, *, left_button_held: bool) -> None:
@@ -85,18 +99,20 @@ class QuartzActionBackend:
             (x, y),
         )
 
-    def post_left_down(self) -> None:
+    def post_left_down(self, click_count: int) -> None:
         self._post_mouse(
             self._quartz.kCGEventLeftMouseDown,
             self._quartz.kCGMouseButtonLeft,
             self._cursor_location(),
+            click_count=click_count,
         )
 
-    def post_left_up(self) -> None:
+    def post_left_up(self, click_count: int) -> None:
         self._post_mouse(
             self._quartz.kCGEventLeftMouseUp,
             self._quartz.kCGMouseButtonLeft,
             self._cursor_location(),
+            click_count=click_count,
         )
 
     def post_right_down(self) -> None:
@@ -135,11 +151,35 @@ class QuartzActionBackend:
 
 
 class ActionDispatcher:
-    def __init__(self, backend: ActionBackend) -> None:
+    def __init__(
+        self,
+        backend: ActionBackend,
+        *,
+        double_click_interval_ms: int,
+        double_click_max_distance_pixels: float,
+    ) -> None:
+        if double_click_interval_ms <= 0:
+            raise ValueError("Double-click interval must be positive")
+        if double_click_max_distance_pixels <= 0:
+            raise ValueError("Double-click distance must be positive")
         self._backend = backend
         self._lock = Lock()
+        self._double_click_interval_ns = double_click_interval_ms * 1_000_000
+        self._double_click_max_distance_pixels = double_click_max_distance_pixels
         self._left_button_held = False
         self._right_button_held = False
+        self._active_left_click_count = 1
+        self._left_dragged = False
+        self._last_left_up_timestamp_ns: int | None = None
+        self._pointer_position: tuple[float, float] | None = None
+        self._last_left_up_position: tuple[float, float] | None = None
+
+    def _reset_left_click_sequence(self) -> None:
+        self._last_left_up_timestamp_ns = None
+        self._last_left_up_position = None
+        if not self._left_button_held:
+            self._active_left_click_count = 1
+            self._left_dragged = False
 
     def dispatch(self, event: SemanticEvent) -> None:
         with self._lock:
@@ -149,17 +189,46 @@ class ActionDispatcher:
                 self._backend.move_pointer(
                     event.x, event.y, left_button_held=self._left_button_held
                 )
+                self._pointer_position = (event.x, event.y)
+                if self._left_button_held:
+                    self._left_dragged = True
             elif event.kind is EventKind.LEFT_DOWN:
                 if not self._left_button_held:
-                    self._backend.post_left_down()
+                    elapsed = (
+                        event.timestamp_ns - self._last_left_up_timestamp_ns
+                        if self._last_left_up_timestamp_ns is not None
+                        else None
+                    )
+                    distance = (
+                        math.dist(self._pointer_position, self._last_left_up_position)
+                        if self._pointer_position is not None
+                        and self._last_left_up_position is not None
+                        else 0.0
+                    )
+                    self._active_left_click_count = (
+                        2
+                        if elapsed is not None
+                        and 0 <= elapsed <= self._double_click_interval_ns
+                        and distance <= self._double_click_max_distance_pixels
+                        else 1
+                    )
+                    self._backend.post_left_down(self._active_left_click_count)
                     self._left_button_held = True
+                    self._left_dragged = False
             elif event.kind is EventKind.LEFT_UP:
                 if self._left_button_held:
-                    self._backend.post_left_up()
+                    self._backend.post_left_up(self._active_left_click_count)
                     self._left_button_held = False
+                    if self._left_dragged:
+                        self._last_left_up_timestamp_ns = None
+                        self._last_left_up_position = None
+                    else:
+                        self._last_left_up_timestamp_ns = event.timestamp_ns
+                        self._last_left_up_position = self._pointer_position
             elif event.kind is EventKind.RIGHT_CLICK:
                 if self._left_button_held:
                     raise RuntimeError("Refusing to right-click while the left button is held")
+                self._reset_left_click_sequence()
                 self._backend.post_right_down()
                 self._right_button_held = True
                 self._backend.post_right_up()
@@ -167,6 +236,7 @@ class ActionDispatcher:
             elif event.kind is EventKind.SCROLL:
                 if self._left_button_held:
                     raise RuntimeError("Refusing to scroll while the left button is held")
+                self._reset_left_click_sequence()
                 if event.pixel_dx is None or event.pixel_dy is None:
                     raise ValueError("SCROLL requires pixel_dx and pixel_dy")
                 self._backend.post_pixel_scroll(event.pixel_dx, event.pixel_dy)
@@ -175,14 +245,18 @@ class ActionDispatcher:
 
     def safe_release_all(self) -> None:
         with self._lock:
+            self._last_left_up_timestamp_ns = None
+            self._last_left_up_position = None
             first_error: Exception | None = None
             if self._left_button_held:
                 try:
-                    self._backend.post_left_up()
+                    self._backend.post_left_up(self._active_left_click_count)
                 except Exception as error:
                     first_error = error
                 else:
                     self._left_button_held = False
+                    self._active_left_click_count = 1
+                    self._left_dragged = False
             if self._right_button_held:
                 try:
                     self._backend.post_right_up()
@@ -191,6 +265,9 @@ class ActionDispatcher:
                         first_error = error
                 else:
                     self._right_button_held = False
+            if not self._left_button_held:
+                self._active_left_click_count = 1
+                self._left_dragged = False
             if first_error is not None:
                 raise first_error
 

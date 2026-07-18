@@ -33,9 +33,9 @@ def test_invalid_cross_field_configuration_fails_closed(tmp_path) -> None:
         load_config(config_path)
 
 
-def test_disabled_experimental_right_click_cannot_be_selected(tmp_path) -> None:
+def test_disabled_two_finger_right_click_fallback_cannot_be_selected(tmp_path) -> None:
     raw = yaml.safe_load((repository_root() / "config.yaml").read_text())
-    raw["gestures"]["right_click_candidate"] = "middle_pinch"
+    raw["gestures"]["right_click_candidate"] = "two_finger_dwell"
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(raw))
 

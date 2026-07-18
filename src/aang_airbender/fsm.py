@@ -25,6 +25,7 @@ class GestureState(Enum):
     NEUTRAL = auto()
     POINTING = auto()
     PINCH_PENDING = auto()
+    MIDDLE_PINCH_PENDING = auto()
     TWO_FINGER_PENDING = auto()
     DRAGGING = auto()
     SCROLLING = auto()
@@ -54,7 +55,9 @@ class GestureEngine:
         self._loss_since_ns: int | None = None
         self._loss_cancelled = False
         self._reacquired_since_ns: int | None = None
+        self._disengage_since_ns: int | None = None
         self._candidate_since_ns: int | None = None
+        self._middle_pinch_armed = False
         self._two_finger_origin: Point2 | None = None
 
     def _duration_ns(self, section: str, key: str) -> int:
@@ -105,6 +108,7 @@ class GestureEngine:
         intents.append(GestureIntent(IntentKind.CANCEL, now_ns, reason=reason))
         self._transition_gesture(GestureState.NEUTRAL, now_ns, reason)
         self._candidate_since_ns = None
+        self._middle_pinch_armed = False
         self._two_finger_origin = None
         return intents
 
@@ -117,6 +121,7 @@ class GestureEngine:
         intents = self._cancel_active(now_ns, reason)
         self._transition_engagement(EngagementState.DISENGAGED, now_ns, reason)
         self._engagement_since_ns = None
+        self._disengage_since_ns = None
         return intents
 
     def update(
@@ -131,6 +136,7 @@ class GestureEngine:
         if features is None or pose is None or features.confidence < confidence_threshold:
             if self.gesture in (
                 GestureState.PINCH_PENDING,
+                GestureState.MIDDLE_PINCH_PENDING,
                 GestureState.TWO_FINGER_PENDING,
             ):
                 self._transition_gesture(
@@ -142,10 +148,13 @@ class GestureEngine:
         engagement_intents = self._on_valid_hand(pose, now_ns)
         if self.engagement is not EngagementState.ENGAGED:
             return engagement_intents
+        if pose.thumbs_down:
+            return engagement_intents
         return engagement_intents + self._update_gesture(features, pose, now_ns)
 
     def _on_tracking_loss(self, now_ns: int) -> list[GestureIntent]:
         self._reacquired_since_ns = None
+        self._disengage_since_ns = None
         if self.engagement not in (EngagementState.ENGAGED, EngagementState.SUSPENDED):
             if self.engagement is EngagementState.ARMING:
                 self._transition_engagement(EngagementState.DISENGAGED, now_ns, "arming_hand_lost")
@@ -198,6 +207,17 @@ class GestureEngine:
             return []
         self._loss_since_ns = None
         self._loss_cancelled = False
+        if pose.thumbs_down:
+            if self._disengage_since_ns is None:
+                intents = self._cancel_active(now_ns, "thumbs_down_candidate")
+                self._disengage_since_ns = now_ns
+                return intents
+            if now_ns - self._disengage_since_ns >= self._duration_ns(
+                "timing", "thumbs_down_dwell_ms"
+            ):
+                return self.disengage(now_ns, "thumbs_down_dwell_complete")
+            return []
+        self._disengage_since_ns = None
         return []
 
     def _stable_for(self, now_ns: int, duration_key: str = "pose_stability_ms") -> bool:
@@ -212,6 +232,28 @@ class GestureEngine:
         pose: PoseClassification,
         now_ns: int,
     ) -> list[GestureIntent]:
+        if pose.fist and self.gesture is not GestureState.CLUTCHED:
+            if self.gesture in (
+                GestureState.PINCH_PENDING,
+                GestureState.MIDDLE_PINCH_PENDING,
+                GestureState.TWO_FINGER_PENDING,
+                GestureState.DRAGGING,
+                GestureState.SCROLLING,
+                GestureState.RIGHT_CLICK_COMMITTED,
+            ):
+                intents = self._cancel_active(now_ns, "fist_release_before_clutch")
+                self._candidate_since_ns = now_ns
+                return intents
+            if self._candidate_since_ns is None:
+                intents = self._cancel_active(now_ns, "fist_candidate_safe_release")
+                self._candidate_since_ns = now_ns
+                return intents
+            if self._stable_for(now_ns):
+                self._transition_gesture(GestureState.CLUTCHED, now_ns, "fist_clutch")
+                self._candidate_since_ns = None
+                return [GestureIntent(IntentKind.CLUTCH_ON, now_ns)]
+            return []
+
         if self.gesture is GestureState.DRAGGING:
             if pose.index_pinch_open:
                 self._transition_gesture(GestureState.NEUTRAL, now_ns, "pinch_released")
@@ -233,7 +275,7 @@ class GestureEngine:
             ]
 
         if self.gesture is GestureState.RIGHT_CLICK_COMMITTED:
-            if not pose.two_finger and not pose.middle_pinch_closed:
+            if pose.pointer_active:
                 self._transition_gesture(GestureState.NEUTRAL, now_ns, "right_click_neutral")
             return []
 
@@ -254,6 +296,34 @@ class GestureEngine:
                 return [GestureIntent(IntentKind.PINCH_START, now_ns, pinch_kind="index")]
             return []
 
+        if self.gesture is GestureState.MIDDLE_PINCH_PENDING:
+            if pose.index_pinch_closed:
+                self._transition_gesture(
+                    GestureState.NEUTRAL, now_ns, "middle_pinch_cancelled_by_index_pinch"
+                )
+                self._candidate_since_ns = None
+                self._middle_pinch_armed = False
+                return []
+            if pose.middle_pinch_closed:
+                if self._stable_for(now_ns):
+                    self._middle_pinch_armed = True
+                return []
+            if pose.middle_pinch_open:
+                armed = self._middle_pinch_armed
+                self._candidate_since_ns = None
+                self._middle_pinch_armed = False
+                if armed:
+                    self._transition_gesture(
+                        GestureState.RIGHT_CLICK_COMMITTED,
+                        now_ns,
+                        "middle_pinch_released",
+                    )
+                    return [GestureIntent(IntentKind.RIGHT_CLICK, now_ns)]
+                self._transition_gesture(
+                    GestureState.NEUTRAL, now_ns, "middle_pinch_cancelled_before_stable"
+                )
+            return []
+
         if self.gesture is GestureState.TWO_FINGER_PENDING:
             return self._update_two_finger(features, pose, now_ns)
 
@@ -263,17 +333,12 @@ class GestureEngine:
             return []
 
         gesture_settings = self.config.section("gestures")
-        if (
-            gesture_settings["right_click_candidate"] == "middle_pinch"
-            and gesture_settings["enable_experimental_middle_pinch_right_click"]
-            and pose.middle_pinch_closed
-        ):
-            if self._stable_for(now_ns):
-                self._transition_gesture(
-                    GestureState.RIGHT_CLICK_COMMITTED, now_ns, "middle_pinch_right_click"
-                )
-                self._candidate_since_ns = None
-                return [GestureIntent(IntentKind.RIGHT_CLICK, now_ns)]
+        if gesture_settings["right_click_candidate"] == "middle_pinch" and pose.middle_pinch_closed:
+            self._candidate_since_ns = now_ns
+            self._middle_pinch_armed = False
+            self._transition_gesture(
+                GestureState.MIDDLE_PINCH_PENDING, now_ns, "middle_pinch_candidate"
+            )
             return []
 
         if pose.two_finger:
@@ -282,13 +347,6 @@ class GestureEngine:
             self._transition_gesture(
                 GestureState.TWO_FINGER_PENDING, now_ns, "two_finger_candidate"
             )
-            return []
-
-        if pose.fist:
-            if self._stable_for(now_ns):
-                self._transition_gesture(GestureState.CLUTCHED, now_ns, "fist_clutch")
-                self._candidate_since_ns = None
-                return [GestureIntent(IntentKind.CLUTCH_ON, now_ns)]
             return []
 
         self._candidate_since_ns = None
@@ -340,8 +398,12 @@ class GestureEngine:
             ]
         still = displacement <= float(control["two_finger_stillness_radius_ratio"])
         candidate = self.config.section("gestures")["right_click_candidate"]
+        fallback_enabled = self.config.section("gestures")[
+            "enable_two_finger_dwell_right_click_fallback"
+        ]
         if (
             candidate == "two_finger_dwell"
+            and fallback_enabled
             and still
             and now_ns - self._candidate_since_ns
             >= self._duration_ns("timing", "right_click_dwell_ms")

@@ -65,6 +65,10 @@ def load_config(path: Path | None = None, schema_path: Path | None = None) -> Ph
         raise ConfigurationError(
             "Invalid Phase 1 configuration: pinch closed_ratio must be less than open_ratio"
         )
+    if pinch["cross_pinch_open_ratio"] < pinch["open_ratio"]:
+        raise ConfigurationError(
+            "Invalid Phase 1 configuration: cross-pinch open ratio must be at least open_ratio"
+        )
     timing = raw["timing"]
     if timing["hand_loss_grace_ms"] >= timing["disengage_timeout_ms"]:
         raise ConfigurationError(
@@ -72,11 +76,12 @@ def load_config(path: Path | None = None, schema_path: Path | None = None) -> Ph
         )
     gestures = raw["gestures"]
     if (
-        gestures["right_click_candidate"] == "middle_pinch"
-        and not gestures["enable_experimental_middle_pinch_right_click"]
+        gestures["right_click_candidate"] == "two_finger_dwell"
+        and not gestures["enable_two_finger_dwell_right_click_fallback"]
     ):
         raise ConfigurationError(
-            "Invalid Phase 1 configuration: middle-pinch right click is selected but disabled"
+            "Invalid Phase 1 configuration: two-finger dwell right-click fallback "
+            "is selected but disabled"
         )
     return Phase1Config(
         raw=raw,

@@ -33,7 +33,13 @@ def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
     metrics = TimingMetrics()
     capture = OpenCVLatestFrameCapture(on_frame=metrics.record_capture)
     backend = QuartzActionBackend()
-    dispatcher = ActionDispatcher(backend)
+    dispatcher = ActionDispatcher(
+        backend,
+        double_click_interval_ms=int(config.section("timing")["double_click_interval_ms"]),
+        double_click_max_distance_pixels=float(
+            config.section("control")["double_click_max_distance_pixels"]
+        ),
+    )
     display_bounds = backend.main_display_bounds()
     display_topology = backend.display_topology_signature()
     pipeline = Phase1Pipeline(config, display_bounds, dispatcher)

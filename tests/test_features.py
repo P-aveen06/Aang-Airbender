@@ -130,6 +130,20 @@ def test_extract_features_reports_open_fingers_scale_pinch_and_velocity() -> Non
     assert second.palm_velocity.y == pytest.approx(0.0)
 
 
+def test_extract_features_normalizes_downward_thumb_direction_by_image_hand_scale() -> None:
+    landmarks = list(synthetic_open_hand())
+    landmarks[1] = Point3(0.30, 0.62, 0.0)
+    landmarks[2] = Point3(0.30, 0.72, 0.0)
+    landmarks[3] = Point3(0.30, 0.82, 0.0)
+    landmarks[4] = Point3(0.30, 0.92, 0.0)
+
+    extracted = extract_features(state(tuple(landmarks)), load_config())
+
+    expected = (landmarks[4].y - landmarks[2].y) / extracted.image_hand_scale
+    assert extracted.thumb_direction_down_ratio == pytest.approx(expected)
+    assert extracted.thumb_direction_down_ratio > 0.0
+
+
 def test_palm_facing_score_rejects_back_of_hand_orientation() -> None:
     config = load_config()
     left = extract_features(state(synthetic_open_hand()), config)

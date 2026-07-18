@@ -50,6 +50,7 @@ class HandFeatures:
     pinch_ratio_index: float
     pinch_ratio_middle: float
     index_middle_separation_ratio: float
+    thumb_direction_down_ratio: float
     palm_velocity: Point2
     anchor_velocity: Point2
     confidence: float

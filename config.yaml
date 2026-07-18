@@ -20,14 +20,17 @@ pinch:
 
 poses:
   min_two_finger_separation_ratio: 0.30
+  min_thumb_down_direction_ratio: 0.35
 
 timing:
   pose_stability_ms: 100
   wake_dwell_ms: 900
+  thumbs_down_dwell_ms: 1000
   hand_loss_grace_ms: 200
   disengage_timeout_ms: 2500
   reacquisition_stability_ms: 200
   right_click_dwell_ms: 650
+  double_click_interval_ms: 500
   display_topology_check_ms: 1000
 
 control:
@@ -44,10 +47,11 @@ control:
   two_finger_scroll_displacement_ratio: 0.18
   two_finger_scroll_velocity_ratio_per_second: 0.35
   two_finger_stillness_radius_ratio: 0.08
+  double_click_max_distance_pixels: 12.0
 
 gestures:
-  right_click_candidate: two_finger_dwell
-  enable_experimental_middle_pinch_right_click: false
+  right_click_candidate: middle_pinch
+  enable_two_finger_dwell_right_click_fallback: false
 
 debug:
   render_every_n_frames: 3
