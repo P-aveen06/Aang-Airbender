@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from threading import Event
 
-from .capture import CaptureError, OpenCVLatestFrameCapture
+from .capture import OpenCVLatestFrameCapture
 from .cursor import QuartzCursor, map_to_screen, palm_midpoint
 from .perception import LiveHandLandmarker, is_strictly_newer
 from .safety import MouseSafety, QuartzMouseEventBackend
@@ -101,8 +101,6 @@ def run(*, duration_seconds: float | None = None) -> int:
                         else:
                             safety.safe_release_all()
                 time.sleep(0.001)
-    except CaptureError:
-        raise
     finally:
         capture.stop()
         safety.safe_release_all()

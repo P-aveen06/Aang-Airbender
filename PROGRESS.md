@@ -2,10 +2,10 @@
 
 ## Phase 0 status
 
-**Status:** In progress
+**Status:** Ready for independent re-review
 **Author:** Codex  
 **Independent reviewer:** Claude  
-**Decision:** Pending  
+**Decision:** Phase 0 author gate passed; independent re-review pending
 **Target branch:** `develop`  
 **Implementation branch:** `codex/phase-0-spike`
 **Pull request:** <https://github.com/P-aveen06/Aang-Airbender/pull/1>
@@ -138,10 +138,13 @@ mediapipe 0.10.21; opencv-python 4.11.0.86; pyobjc-framework-Quartz 12.2.1
 
 ## Cursor behavior
 
-- Palm midpoint visibly controls cursor: **UNVERIFIED** — user has not yet reported the visual result
-- X mirroring correct: **UNVERIFIED** manually; mapping unit test passed
-- Main-display mapping correct: **UNVERIFIED** manually; mapping unit test passed
-- Observed jitter or lag: **UNVERIFIED**
+- Palm midpoint visibly controls cursor: **PASS** — user confirmed visible palm-following movement
+- X mirroring correct: **PASS** — moving the hand right moved the cursor right
+- Main-display mapping correct: **PASS** — user controlled the cursor across the main display
+- Observed jitter or lag: user reported no significant jitter or lag
+- Control-range observation: larger palm travel produced less cursor travel than desired. The user
+  does not want excessive sensitivity. Record this for Phase 1 control-box/calibration tuning; do not
+  add filtering, calibration, or acceleration to Phase 0.
 
 ## Safety results
 
@@ -167,7 +170,7 @@ The complete safe-release command passed twice.
 ```text
 ruff format --check: PASS (16 files formatted)
 ruff check: PASS (All checks passed)
-pytest: PASS (14 passed in 5.21s, including official-model LIVE_STREAM smoke test)
+pytest: PASS (14 passed in 4.12s after review fixes, including official-model LIVE_STREAM smoke test)
 fresh-environment pytest: PASS (14 passed in 1.40s)
 ```
 
@@ -187,38 +190,40 @@ to capture buffering without evidence.
 
 - [x] Permission preflight passes.
 - [x] Python 3.11 ARM64 environment installs cleanly.
-- [ ] Cursor follows palm midpoint on target Mac.
+- [x] Cursor follows palm midpoint on target Mac.
 - [x] No unbounded frame/result queue exists.
 - [x] Frame age and software pipeline timing are measured.
 - [x] No held mouse state survives failure or shutdown.
 
 ## Codex Phase 0 decision
 
-**PASS / FAIL / PARTIALLY VERIFIED:** PARTIALLY VERIFIED
+**PASS / FAIL / PARTIALLY VERIFIED:** PASS
 
 Rationale: Environment, architecture, clean install, bounded handoffs, MediaPipe `LIVE_STREAM`,
 camera capture, callback cadence, frame age, software dispatch latency, permission preflight,
-objective safe release, formatting, lint, and automated tests are verified. The user's visual cursor,
-mirroring, and main-display observations remain unreported, so Phase 0 has not passed yet.
+objective safe release, visual cursor following, X mirroring, main-display mapping, formatting,
+lint, and automated tests are verified. All Phase 0 author acceptance conditions are satisfied.
 
 ## Claude independent validation
 
-- Review date:
-- Commit SHA reviewed:
-- Commands reproduced:
-- Automated checks result:
-- Target-Mac checks reproduced:
-- Items still unverified:
-- Blocking findings:
-- Non-blocking findings:
-- Verdict: `APPROVE / REQUEST CHANGES / INCOMPLETE EVIDENCE`
-- Re-review conditions:
+- Review date: 2026-07-18 (initial review)
+- Commit SHA reviewed: `8d0700a`
+- Commands reproduced: model checksum, lock check, formatting, lint, and tests in a Linux container
+- Automated checks result: PASS; 14 tests passed in Claude's environment
+- Target-Mac checks reproduced: unavailable to Claude; subsequently supplied by the user
+- Items still unverified: none at the author gate; independent target-Mac reproduction unavailable
+- Blocking findings: B1 missing target-Mac evidence — addressed with preflight, two timed runs,
+  visual observations, and two objective safety runs
+- Non-blocking findings: S1 old metrics traceability reconciled; N1 no-op exception removed; N2 timing
+  sample-window behavior documented
+- Verdict: `REQUEST CHANGES` on initial review; re-review pending
+- Re-review conditions: inspect updated evidence and fixes on the latest commit
 
 ## Review-loop history
 
 | Round | Commit SHA | Claude verdict | Blocking findings | Codex response | Resolved |
 |---|---|---|---|---|---|
-| 1 |  |  |  |  |  |
+| 1 | `8d0700a` | `REQUEST CHANGES` | Missing target-Mac evidence | Added complete target evidence; reconciled metrics; addressed both nits | Pending re-review |
 
 ## Final user decision
 
@@ -231,7 +236,7 @@ Notes:
 ## Blockers and Phase 1 notes
 
 - Run 1 showed 219.64 ms p95 software latency versus 20.95 ms in run 2; monitor for recurrence.
-- Visual cursor following, X mirroring, and main-display mapping remain `UNVERIFIED` until the user
-  reports what was observed during the target-Mac run.
+- Phase 1 control tuning should increase usable cursor travel without making movement excessively
+  sensitive; this is explicitly deferred from Phase 0.
 
 Do not begin Phase 1 automatically.

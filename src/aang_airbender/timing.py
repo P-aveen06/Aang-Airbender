@@ -64,6 +64,8 @@ class TimingSummary:
 
 
 class TimingMetrics:
+    """Lifetime counters with percentile/rate samples capped to the latest configured window."""
+
     def __init__(self, sample_capacity: int = 10_000) -> None:
         if sample_capacity < 2:
             raise ValueError("sample_capacity must be at least 2")
