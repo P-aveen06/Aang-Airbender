@@ -511,3 +511,59 @@ Status: right-click emission is **PASS**, scroll-state entry is **PASS but usabi
 left click and drag are **FAIL/UNVERIFIED**, and hand-loss release during drag remains **UNVERIFIED**.
 The user requested a deliberate redesign of the core gesture vocabulary. No frozen gesture mapping
 or acceptance criterion has been changed pending project-owner approval.
+
+### Owner-approved gesture vocabulary v1.1 implementation
+
+On 2026-07-18 the project owner approved the Phase 1 vocabulary v1.1 exception supplied through
+Claude review. Per the owner's instruction, the first commit changed only the authorized `PLAN.md`
+sections (§3, §3.1, §3.3, §3.4, §5.3, and open questions 2–3):
+
+```text
+3298b45 docs: approve phase 1 gesture vocabulary v1.1
+1 file changed, 37 insertions(+), 27 deletions(-)
+```
+
+No other frozen acceptance criterion was changed. The implementation now uses:
+
+- the existing weighted centroid of landmarks 0/5/9/13/17 and existing One Euro pointer filter;
+- neutral palm movement rather than the index fingertip as the pointer input;
+- cross-exclusive thumb-index left-button hold/release and thumb-middle right-click-on-release;
+- held left pinch as drag, without a separate drag gesture;
+- motion-gated two-finger scrolling, with stationary two-finger right-click disabled by default;
+- fist release-before-clutch and fresh-baseline release behavior;
+- a configured monotonic thumbs-down dwell, distinct from configured hand-loss grace and timeout;
+  configured pinch hysteresis at close `< 0.35` and open `> 0.50`; and
+- explicit Quartz click-state `2` on a second complete click cycle inside configured time and
+  cursor-distance allowances. Drag cycles, distant clicks, and safety cancellation reset the
+  double-click sequence.
+
+Added non-camera regression coverage for the mandatory confusion gates: index versus middle pinch,
+fist formation versus pinch, fist versus thumbs-down, natural hand loss versus thumbs-down, and two
+complete index-pinch click cycles. Real-application interpretation of those two cycles as a
+double-click remains **UNVERIFIED — requires the target-Mac run in `PHASE_1_VALIDATION.md`**.
+
+Final local validation for the current diff:
+
+```text
+.venv/bin/ruff format --check .
+38 files already formatted
+
+.venv/bin/ruff check .
+All checks passed!
+
+.venv/bin/python -m compileall -q src scripts tests
+PASS
+
+.venv/bin/pytest -q
+73 passed, 1 failed in 23.01s
+FAIL: tests/test_model_smoke.py::test_official_model_runs_in_live_stream_mode
+RuntimeError: Could not create an NSOpenGLPixelFormat
+
+.venv/bin/pytest -q --ignore=tests/test_model_smoke.py
+73 passed in 22.71s
+```
+
+The full-suite failure is the existing WindowServer/graphics-context limitation in this Codex
+process. It does not establish a target-Mac failure or pass. The official-model `LIVE_STREAM` smoke
+test, live gesture confusion gates, real-app double-click, and all remaining target-Mac acceptance
+checks are **UNVERIFIED** for this v1.1 change until rerun from the user's permitted terminal.

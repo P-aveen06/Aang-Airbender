@@ -40,13 +40,24 @@ uv run python -m aang_airbender.app
 ```
 
 The controller starts disengaged. Hold an open palm facing the camera for about 0.9 seconds to
-engage. The initial vocabulary is:
+engage. Open palm has that meaning only while disengaged. The v1.1 candidate vocabulary is:
 
-- Index-only point or relaxed open hand: move the pointer.
-- Thumb-index pinch: hold the left button; opening the pinch releases it.
-- Two fingers, index and middle: movement scrolls; a stationary dwell performs one right click.
-- Fist: clutch/freeze the pointer. Releasing the fist resets the pointer filter baseline. A fist
-  does not disengage the controller.
+- Palm movement: move the pointer from the filtered weighted palm centroid, not the index fingertip.
+- Thumb-index pinch: press the left button; hold the pinch to drag and open it to release.
+- Thumb-middle pinch: arm a right click; opening the pinch emits it once, then return to neutral.
+- Two fingers, index and middle: vertical motion scrolls. Holding the pose still does nothing.
+- Fist: release held input, then clutch/freeze the pointer. Opening the fist resets the pointer
+  filter baseline. A fist does not disengage the controller.
+- Thumbs-down for about one second: disengage.
+- Hand loss: release held input after about 200 ms; disengage after the full timeout.
+
+Index and middle pinches are cross-exclusive: keep the non-pinching finger clearly open. An
+ambiguous pinch emits no click. Stationary two-finger right-click remains available only as a
+disabled configuration fallback and is not part of the default vocabulary.
+
+Two complete left-pinch cycles inside the configured time and cursor-distance allowances mark the
+second Quartz down/up pair with click state `2`. This supports application-level double-clicks while
+preventing a drag or distant second click from being promoted to a double-click.
 
 Press Control-C to stop. Shutdown and error paths release any left button held by Aang-Airbender.
 The physical trackpad and mouse remain available as the external recovery path.

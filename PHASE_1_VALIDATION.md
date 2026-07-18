@@ -45,15 +45,38 @@ uv run python -m aang_airbender.app --duration-seconds 300
 During the five-minute session, do not touch the trackpad after engagement:
 
 - [ ] Hold a facing open palm for the configured dwell and engage.
-- [ ] Browse and open an application using thumb-index pinch clicks.
-- [ ] Drag a disposable file or safe test object, then confirm release.
-- [ ] Scroll a page using the two-finger command pose.
-- [ ] Confirm a stationary two-finger dwell produces exactly one right click.
-- [ ] Confirm fist clutches/freezes the pointer and does not disengage.
+- [ ] Move the pointer using palm motion; confirm the anchor feels independent of fingertip motion.
+- [ ] Browse and open an application using thumb-index pinch-and-release clicks.
+- [ ] Hold a thumb-index pinch to drag a disposable file or safe test object, then confirm release.
+- [ ] Emit exactly one right click by closing and releasing a thumb-middle pinch, then returning to
+      neutral.
+- [ ] Scroll a page using two fingers plus vertical motion.
+- [ ] Hold two fingers still and confirm no pointer, click, or scroll event occurs.
+- [ ] Confirm fist releases any active drag before clutching/freezing the pointer, and does not
+      disengage even when held longer than one second.
+- [ ] Confirm fist release re-baselines the pointer without a jump.
+- [ ] Hold thumbs-down for the configured one-second dwell and confirm disengagement.
 - [ ] Confirm cursor travel is sufficient without feeling excessively sensitive.
 - [ ] Record timing summary, action counters, failures, and observations in `PROGRESS.md`.
 
-## 4. Target acquisition
+## 4. Required confusion gates
+
+Run these deliberately before calling the vocabulary v1:
+
+- [ ] Alternate thumb-index and thumb-middle pinches; record any wrong-button click. The ambiguous
+      cross-pinch zone must emit nothing.
+- [ ] Form a fist slowly and quickly; confirm no left or right click occurs while fingers curl.
+- [ ] Alternate fist and thumbs-down; confirm fist never disengages and thumbs-down never clutches.
+- [ ] Drop the hand naturally out of frame; confirm this follows hand-loss grace/full-timeout paths,
+      never the explicit thumbs-down path.
+- [ ] In Finder and at least one browser, perform two complete thumb-index pinch cycles at normal
+      double-click cadence and confirm the target application interprets them as a double-click.
+
+Application-level double-click behavior is a target-Mac acceptance check. The automated tests prove
+two complete `LEFT_DOWN`/`LEFT_UP` cycles are emitted and the second Quartz pair receives click state
+`2` inside configured time/distance allowances, but do not substitute for this real-app check.
+
+## 5. Target acquisition
 
 Open `tests/manual/target_acquisition.html` in Safari or Chromium. It presents twenty targets whose
 diameter is exactly 44 CSS pixels (normally 44 macOS display-coordinate units at default browser
@@ -68,7 +91,7 @@ zoom). Keep browser zoom at 100%, engage Aang-Airbender, start the run, and acqu
 - p95 acquisition time:
 - [ ] All 20 targets acquired; misses and timing support “reliably” in the owner's judgment.
 
-## 5. False-action sessions
+## 6. False-action sessions
 
 Run without `--debug`; debug preview is not part of normal pointing behavior.
 
@@ -84,10 +107,12 @@ uv run python -m aang_airbender.app --duration-seconds 1800
 
 Do not average the two sessions or reinterpret the thresholds.
 
-## 6. Safety and loss paths
+## 7. Safety and loss paths
 
 - [ ] Begin a drag, remove the hand, and confirm release within the configured 200 ms grace period.
 - [ ] Allow full no-hand disengagement and confirm no button remains held.
+- [ ] Begin a drag, form a fist, and confirm left-button release occurs before clutch activation.
+- [ ] Begin a drag, hold thumbs-down through its dwell, and confirm release before disengagement.
 - [ ] Press Control-C during a drag and confirm the shutdown state prints `False`.
 - [ ] Close/block the camera during a drag and confirm the failure path releases the button.
 - [ ] Run `scripts/verify_safe_release.py`; both objective Quartz assertions pass.
