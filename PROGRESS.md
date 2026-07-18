@@ -614,3 +614,107 @@ The full-suite failure is the existing graphics-context restriction in the Codex
 new mapping failure. Live target-Mac feel, cursor travel, jitter, and click-precision impact are
 **UNVERIFIED** until the owner reruns the controller. The increase is deliberately moderate because
 excessive sensitivity would worsen the currently observed click-target retention problem.
+
+### Owner-approved gesture vocabulary v1.2 implementation
+
+On 2026-07-18 the project owner approved a second frozen-plan exception after live usability
+testing. The active Phase 1 vocabulary is now intentionally limited to a physical-right-hand strict
+index-point pose for cursor movement and a physical-left-hand thumb-index pinch for one anchored
+single click. The first commit changed only `PLAN.md`:
+
+```text
+f49e870 docs: approve phase 1 gesture vocabulary v1.2
+1 file changed, 106 insertions(+), 153 deletions(-)
+
+28e8a52 feat: implement two-hand point and click vocabulary
+30 files changed, 939 insertions(+), 1397 deletions(-)
+```
+
+Implementation changes:
+
+- configured MediaPipe for up to two simultaneous hands and changed the latest-result contract to
+  one immutable `HandFrame` containing zero, one, or two hands;
+- assigned physical roles from corrected handedness and confidence, never callback array order;
+  duplicate, unknown, low-confidence, and missing roles fail closed;
+- corrected the handedness convention for the unmirrored OpenCV AVFoundation input. MediaPipe's
+  documented convention assumes mirrored selfie input, so raw labels are exchanged exactly once;
+- moved the active pointer anchor to right-hand image landmark 8 and retained absolute main-display
+  mapping through the configured central control box;
+- replaced the palm-tuned One Euro `beta=0.007` with `beta=4.0`. A deterministic 30 fps,
+  500 ms full-width sweep regression requires less than 10% normalized trailing error;
+- replaced the old engagement/gesture FSM with `INACTIVE`, `POINTING`, `CLICK_PENDING`,
+  `CLICK_ARMED`, and `FAULT` states using configured monotonic stability/grace durations;
+- required the left hand to be observed open before a close can arm, preventing a hand that enters
+  already pinched from clicking;
+- froze the mapped pointer location at pinch start, committed only after a stable pinch is released,
+  and cancelled immediately if either required role becomes invalid or disappears;
+- emitted an atomic `LEFT_CLICK(x, y)` that moves to the frozen anchor and posts one owned Quartz
+  down/up pair with click state `1`. No mouse button is held across perception frames; two rapid
+  pinch cycles remain two single-click-state events;
+- removed former Phase 1 gesture meanings and their runtime configuration: palm pointer,
+  open-palm wake, drag, right-click, scroll, fist clutch, thumbs-down, and explicit double-click;
+- kept fist formation as a non-actionable pinch exclusion so curled fingers cannot become a false
+  left click; and
+- updated the two-hand JSONL fixture format, debug overlay, README, validation worksheet, PR
+  template, and Claude reviewer handover.
+
+Headless and model validation from the Codex process:
+
+```text
+uv run ruff format .
+7 files reformatted, 31 files left unchanged
+
+uv run ruff format --check .
+38 files already formatted
+
+uv run ruff check .
+All checks passed!
+
+uv run python -m compileall -q src scripts tests
+PASS
+
+uv run pytest -q
+63 passed in 3.88s
+```
+
+The complete suite includes the official model `LIVE_STREAM` smoke test with `num_hands=2`; it
+passed in this run. Configuration, physical-role ordering/duplicate rejection, index-point
+exclusion, pinch hysteresis, fist false-click exclusion, left-neutral arming, early/lost-role
+cancellation, configured hand-loss release, click anchoring, rapid single-click semantics, atomic
+up-failure recovery, frame replay, and terminal cleanup all have non-camera regression coverage.
+
+The final author diff review found one click-precision defect before commit: `LEFT_CLICK` first
+posted a pointer-move event and then let Quartz re-read the current cursor location for down/up.
+Because event posting is asynchronous, the read could still return the previous location. The
+backend contract now sends the frozen anchor coordinates directly in both Quartz button events.
+Regression tests assert the exact down/up location and cover conservative release after either a
+down-post or up-post failure.
+
+Environment and permission preflight from this Codex process:
+
+```text
+uv sync --frozen
+PASS
+
+uv run python -c "import platform; print(platform.python_version(), platform.machine())"
+3.11.14 arm64
+
+uv run python scripts/preflight.py
+Python: 3.11.14
+Architecture: arm64
+Accessibility trusted: False
+AVFoundation camera opened: True
+AVFoundation camera frame read: True
+PREFLIGHT FAILED
+- Accessibility permission is missing. Open System Settings > Privacy & Security > Accessibility
+  and enable the terminal application running this command. Then fully quit the terminal
+  application, reopen it, and rerun this preflight.
+```
+
+This Accessibility failure applies to the Codex process, not the owner's previously trusted shell.
+The new v1.2 build was therefore not allowed to dispatch live Quartz events from this process.
+`scripts/verify_safe_release.py`, simultaneous physical-role behavior, right-index cursor feel,
+left-pinch click precision, removed-gesture inactivity, target acquisition, false-action sessions,
+and all other target-Mac checks in `PHASE_1_VALIDATION.md` are **UNVERIFIED** for v1.2 until rerun
+from the owner's Accessibility-trusted terminal. Phase 1 remains at the acceptance gate; Phase 2
+has not begun.
