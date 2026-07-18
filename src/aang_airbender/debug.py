@@ -6,9 +6,22 @@ from .fsm import GestureEngine
 from .poses import PoseClassification
 from .types import HandFeatures, HandState
 
-# OpenCV uses BGR. These mirror the design system's primary light/dark text contrast.
-DEBUG_TEXT_BGR = (249, 250, 250)
-DEBUG_TEXT_OUTLINE_BGR = (24, 24, 24)
+# OpenCV uses BGR. These mirror the design system's primary text and light background.
+DEBUG_TEXT_BGR = (27, 24, 24)
+DEBUG_TEXT_OUTLINE_BGR = (248, 250, 251)
+DEBUG_FONT_SCALE = 0.38
+DEBUG_LINE_HEIGHT_PX = 17
+DEBUG_MARGIN_PX = 8
+
+
+def debug_text_origins(height: int, line_count: int) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (
+            DEBUG_MARGIN_PX,
+            height - DEBUG_MARGIN_PX - DEBUG_LINE_HEIGHT_PX * (line_count - line_number - 1),
+        )
+        for line_number in range(line_count)
+    )
 
 
 class DebugRenderer:
@@ -65,16 +78,15 @@ class DebugRenderer:
             f"engagement={engine.engagement.name} gesture={engine.gesture.name}",
             f"frame={hand.frame_id} callback_ms={callback_latency_ms:.1f}",
         )
-        for line_number, line in enumerate(lines, start=1):
-            origin = (10, 24 * line_number)
+        for line, origin in zip(lines, debug_text_origins(height, len(lines)), strict=True):
             self._cv2.putText(
                 image,
                 line,
                 origin,
                 self._cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                DEBUG_FONT_SCALE,
                 DEBUG_TEXT_OUTLINE_BGR,
-                4,
+                2,
                 self._cv2.LINE_AA,
             )
             self._cv2.putText(
@@ -82,7 +94,7 @@ class DebugRenderer:
                 line,
                 origin,
                 self._cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                DEBUG_FONT_SCALE,
                 DEBUG_TEXT_BGR,
                 1,
                 self._cv2.LINE_AA,

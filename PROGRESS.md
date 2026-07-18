@@ -471,3 +471,22 @@ confirms the regression fix on the live AVFoundation path:
 Result: live open-palm engagement and visible cursor following are **PASS** for this recording. This
 evidence does not by itself cover clicking, dragging, right-clicking, scrolling, hand-loss safety,
 the five-minute session, or the longer false-action acceptance runs.
+
+### Compact debug-overlay feedback
+
+The user reported that the high-contrast debug block at the top-left remained visually distracting.
+Moved the three diagnostic lines to the bottom-left, reduced the font scale from 0.55 to 0.38, and
+changed the foreground to the design system's near-black primary text color. A thin off-white edge
+preserves readability when the camera background is dark. Added a headless unit test for the color,
+compact scale, and bottom-left positioning.
+
+```text
+uv run ruff format --check .
+38 files already formatted
+
+uv run ruff check .
+All checks passed!
+
+uv run pytest -q
+57 passed in 4.29s
+```
