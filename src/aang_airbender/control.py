@@ -94,50 +94,45 @@ class ControlEngine:
         self.config = config
         self.bounds = bounds
         self.pointer_filter = PointerFilter(config)
-        self._clutched = False
-        self._scroll_last_timestamp_ns: int | None = None
+        self._latest_pointer: Point2 | None = None
+        self._click_anchor: Point2 | None = None
 
     def consume(self, intent: GestureIntent) -> tuple[SemanticEvent, ...]:
         if intent.kind is IntentKind.CANCEL:
             self.pointer_filter.reset()
-            self._scroll_last_timestamp_ns = None
+            self._latest_pointer = None
+            self._click_anchor = None
             return ()
-        if intent.kind is IntentKind.ENGAGE_REQUEST:
-            self.pointer_filter.reset()
+        if intent.kind is IntentKind.CLICK_CANCEL:
+            self._click_anchor = None
             return ()
-        if intent.kind is IntentKind.CLUTCH_ON:
-            self._clutched = True
+        if intent.kind is IntentKind.CLICK_ARM:
+            self._click_anchor = self._latest_pointer
             return ()
-        if intent.kind is IntentKind.CLUTCH_OFF:
-            self._clutched = False
-            self.pointer_filter.reset()
-            return ()
-        if intent.kind is IntentKind.PINCH_START:
-            return (SemanticEvent(EventKind.LEFT_DOWN, intent.timestamp_ns),)
-        if intent.kind is IntentKind.PINCH_END:
-            return (SemanticEvent(EventKind.LEFT_UP, intent.timestamp_ns),)
-        if intent.kind is IntentKind.RIGHT_CLICK:
-            return (SemanticEvent(EventKind.RIGHT_CLICK, intent.timestamp_ns),)
-        if intent.kind is IntentKind.SCROLL_START:
-            self._scroll_last_timestamp_ns = intent.timestamp_ns
-            return ()
-        if intent.kind is IntentKind.SCROLL_END:
-            self._scroll_last_timestamp_ns = None
-            return ()
-        if intent.kind is IntentKind.SCROLL_UPDATE:
-            if intent.velocity is None:
-                raise ValueError("SCROLL_UPDATE requires velocity")
-            return self._scroll(intent)
+        if intent.kind is IntentKind.CLICK_COMMIT:
+            anchor = self._click_anchor
+            self._click_anchor = None
+            if anchor is None:
+                return ()
+            return (
+                SemanticEvent(
+                    EventKind.LEFT_CLICK,
+                    intent.timestamp_ns,
+                    x=anchor.x,
+                    y=anchor.y,
+                ),
+            )
         if intent.kind is IntentKind.POINT:
             if intent.point is None:
                 raise ValueError("POINT requires a point")
-            if self._clutched:
-                return ()
             filtered = self.pointer_filter.apply(intent.point, intent.timestamp_ns)
             oriented = camera_to_display_orientation(
                 filtered, camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED
             )
             mapped = map_control_box_to_display(oriented, self.config.control_box, self.bounds)
+            self._latest_pointer = mapped
+            if self._click_anchor is not None:
+                return ()
             return (
                 SemanticEvent(
                     EventKind.POINTER_MOVE,
@@ -147,23 +142,3 @@ class ControlEngine:
                 ),
             )
         raise ValueError(f"Unsupported gesture intent: {intent.kind!r}")
-
-    def _scroll(self, intent: GestureIntent) -> tuple[SemanticEvent, ...]:
-        if self._scroll_last_timestamp_ns is None or intent.velocity is None:
-            self._scroll_last_timestamp_ns = intent.timestamp_ns
-            return ()
-        elapsed = (intent.timestamp_ns - self._scroll_last_timestamp_ns) / 1_000_000_000
-        self._scroll_last_timestamp_ns = intent.timestamp_ns
-        if elapsed <= 0.0:
-            return ()
-        settings = self.config.section("control")
-        direction = 1.0 if settings["natural_scrolling"] else -1.0
-        gain = float(settings["scroll_gain"])
-        return (
-            SemanticEvent(
-                EventKind.SCROLL,
-                intent.timestamp_ns,
-                pixel_dx=direction * intent.velocity.x * gain * elapsed,
-                pixel_dy=direction * intent.velocity.y * gain * elapsed,
-            ),
-        )

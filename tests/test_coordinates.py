@@ -20,9 +20,9 @@ def test_unmirrored_camera_is_mirrored_exactly_once_for_display_control() -> Non
 
 
 def test_mediapipe_handedness_is_corrected_in_same_convention_module() -> None:
-    assert corrected_handedness("Left", camera_input_is_mirrored=False) == "Left"
-    assert corrected_handedness("Right", camera_input_is_mirrored=False) == "Right"
-    assert corrected_handedness("Right", camera_input_is_mirrored=True) == "Left"
+    assert corrected_handedness("Left", camera_input_is_mirrored=False) == "Right"
+    assert corrected_handedness("Right", camera_input_is_mirrored=False) == "Left"
+    assert corrected_handedness("Right", camera_input_is_mirrored=True) == "Right"
 
 
 def test_central_control_box_expands_and_clamps_to_display() -> None:

@@ -33,13 +33,7 @@ def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
     metrics = TimingMetrics()
     capture = OpenCVLatestFrameCapture(on_frame=metrics.record_capture)
     backend = QuartzActionBackend()
-    dispatcher = ActionDispatcher(
-        backend,
-        double_click_interval_ms=int(config.section("timing")["double_click_interval_ms"]),
-        double_click_max_distance_pixels=float(
-            config.section("control")["double_click_max_distance_pixels"]
-        ),
-    )
+    dispatcher = ActionDispatcher(backend)
     display_bounds = backend.main_display_bounds()
     display_topology = backend.display_topology_signature()
     pipeline = Phase1Pipeline(config, display_bounds, dispatcher)
@@ -101,7 +95,7 @@ def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
                         metrics.record_stale()
                     else:
                         last_result_timestamp_ms = result.mediapipe_timestamp_ms
-                        pipeline_result = pipeline.process_hand(result)
+                        pipeline_result = pipeline.process_frame(result)
                         for event in pipeline_result.events:
                             if event.kind is EventKind.POINTER_MOVE:
                                 dispatched_at_ns = time.monotonic_ns()
@@ -114,18 +108,20 @@ def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
                                 renderer.render(
                                     debug_frame[1].image_bgr,
                                     result,
-                                    pipeline_result.features,
-                                    pipeline_result.pose,
+                                    pipeline_result.right_features,
+                                    pipeline_result.left_features,
+                                    pipeline_result.right_pose,
+                                    pipeline_result.left_pose,
                                     pipeline.gestures,
                                 )
                         LOGGER.debug(
-                            "frame=%d capture=%d callback=%d consume=%d engagement=%s gesture=%s",
+                            "frame=%d capture=%d callback=%d consume=%d state=%s hands=%d",
                             result.frame_id,
                             result.capture_timestamp_ns,
                             result.callback_timestamp_ns,
                             consumed_at_ns,
-                            pipeline.gestures.engagement.name,
-                            pipeline.gestures.gesture.name,
+                            pipeline.gestures.state.name,
+                            len(result.hands),
                         )
                 time.sleep(0.001)
     finally:
@@ -140,7 +136,9 @@ def run(*, duration_seconds: float | None = None, debug: bool = False) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Aang-Airbender Phase 1 core-five controller")
+    parser = argparse.ArgumentParser(
+        description="Aang-Airbender Phase 1 right-point/left-click controller"
+    )
     parser.add_argument("--verbose", action="store_true", help="print per-result timing trace")
     parser.add_argument(
         "--debug",

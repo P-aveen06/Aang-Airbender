@@ -1,6 +1,7 @@
-config_version: 1
+config_version: 2
 
 perception:
+  num_hands: 2
   min_hand_detection_confidence: 0.7
   min_hand_presence_confidence: 0.7
   min_tracking_confidence: 0.6
@@ -10,49 +11,27 @@ features:
   velocity_smoothing_alpha: 0.35
   min_joint_angle_degrees: 155.0
   max_curled_joint_angle_degrees: 115.0
-  min_palm_facing_score: 0.35
   min_valid_confidence: 0.6
 
 pinch:
   closed_ratio: 0.35
   open_ratio: 0.50
-  cross_pinch_open_ratio: 0.50
-
-poses:
-  min_two_finger_separation_ratio: 0.30
-  min_thumb_down_direction_ratio: 0.35
 
 timing:
   pose_stability_ms: 100
-  wake_dwell_ms: 900
-  thumbs_down_dwell_ms: 1000
   hand_loss_grace_ms: 200
-  disengage_timeout_ms: 2500
   reacquisition_stability_ms: 200
-  right_click_dwell_ms: 650
-  double_click_interval_ms: 500
   display_topology_check_ms: 1000
 
 control:
   one_euro_min_cutoff: 1.0
-  one_euro_beta: 0.007
+  one_euro_beta: 4.0
   one_euro_derivative_cutoff: 1.0
   control_box:
     left: 0.25
     top: 0.23
     right: 0.75
     bottom: 0.77
-  scroll_gain: 900.0
-  natural_scrolling: true
-  two_finger_scroll_displacement_ratio: 0.18
-  two_finger_scroll_velocity_ratio_per_second: 0.35
-  two_finger_stillness_radius_ratio: 0.08
-  double_click_max_distance_pixels: 12.0
-
-gestures:
-  right_click_candidate: middle_pinch
-  enable_two_finger_dwell_right_click_fallback: false
-
 debug:
   render_every_n_frames: 3
   state_transition_history_capacity: 256

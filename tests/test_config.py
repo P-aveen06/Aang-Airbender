@@ -9,7 +9,8 @@ from aang_airbender.config import ConfigurationError, load_config, repository_ro
 def test_repository_configuration_is_valid() -> None:
     config = load_config()
 
-    assert config.raw["config_version"] == 1
+    assert config.raw["config_version"] == 2
+    assert config.section("perception")["num_hands"] == 2
     assert config.control_box.left < config.control_box.right
 
 
@@ -33,13 +34,13 @@ def test_invalid_cross_field_configuration_fails_closed(tmp_path) -> None:
         load_config(config_path)
 
 
-def test_disabled_two_finger_right_click_fallback_cannot_be_selected(tmp_path) -> None:
+def test_removed_gesture_configuration_fails_closed(tmp_path) -> None:
     raw = yaml.safe_load((repository_root() / "config.yaml").read_text())
-    raw["gestures"]["right_click_candidate"] = "two_finger_dwell"
+    raw["gestures"] = {"right_click_candidate": "middle_pinch"}
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(raw))
 
-    with pytest.raises(ConfigurationError, match="selected but disabled"):
+    with pytest.raises(ConfigurationError, match="Additional properties"):
         load_config(config_path)
 
 

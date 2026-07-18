@@ -31,7 +31,7 @@ def main() -> None:
     from aang_airbender.capture import OpenCVLatestFrameCapture
     from aang_airbender.config import load_config
     from aang_airbender.perception import LiveHandLandmarker
-    from aang_airbender.replay import hand_state_to_record
+    from aang_airbender.replay import hand_frame_to_record
 
     config = load_config()
     output = args.output.resolve()
@@ -55,8 +55,10 @@ def main() -> None:
                     landmarker.submit(frame)
                 result_item = landmarker.latest.get_after(result_version)
                 if result_item is not None:
-                    result_version, hand = result_item
-                    destination.write(json.dumps(hand_state_to_record(hand), separators=(",", ":")))
+                    result_version, frame = result_item
+                    destination.write(
+                        json.dumps(hand_frame_to_record(frame), separators=(",", ":"))
+                    )
                     destination.write("\n")
                     records += 1
                 time.sleep(0.001)

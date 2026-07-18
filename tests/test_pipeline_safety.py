@@ -3,9 +3,8 @@ import pytest
 from aang_airbender.actions import ActionDispatcher
 from aang_airbender.config import load_config
 from aang_airbender.coordinates import DisplayBounds
-from aang_airbender.fsm import EngagementState, GestureState
 from aang_airbender.pipeline import Phase1Pipeline
-from aang_airbender.types import EventKind, HandState, SemanticEvent
+from aang_airbender.types import EventKind, HandFrame, SemanticEvent
 
 MS = 1_000_000
 
@@ -19,22 +18,17 @@ class FakeBackend:
     def move_pointer(self, _x: float, _y: float, *, left_button_held: bool) -> None:
         pass
 
-    def post_left_down(self, _click_count: int) -> None:
+    def post_left_down(
+        self, _click_count: int, *, location: tuple[float, float] | None = None
+    ) -> None:
         self.down = True
         self.down_events += 1
 
-    def post_left_up(self, _click_count: int) -> None:
+    def post_left_up(
+        self, _click_count: int, *, location: tuple[float, float] | None = None
+    ) -> None:
         self.down = False
         self.up_events += 1
-
-    def post_right_down(self) -> None:
-        pass
-
-    def post_right_up(self) -> None:
-        pass
-
-    def post_pixel_scroll(self, _dx: float, _dy: float) -> None:
-        pass
 
     def is_left_down(self) -> bool:
         return self.down
@@ -46,19 +40,13 @@ def pipeline() -> tuple[Phase1Pipeline, FakeBackend]:
     runtime = Phase1Pipeline(
         config,
         DisplayBounds(0, 0, 1000, 500),
-        ActionDispatcher(
-            backend,
-            double_click_interval_ms=int(config.section("timing")["double_click_interval_ms"]),
-            double_click_max_distance_pixels=float(
-                config.section("control")["double_click_max_distance_pixels"]
-            ),
-        ),
+        ActionDispatcher(backend),
     )
     return runtime, backend
 
 
-def invalid_hand(timestamp_ns: int) -> HandState:
-    return HandState((), (), None, 0, 1, timestamp_ns, timestamp_ns // MS, timestamp_ns, False)
+def empty_frame(timestamp_ns: int) -> HandFrame:
+    return HandFrame((), 1, timestamp_ns, timestamp_ns // MS, timestamp_ns)
 
 
 def hold_left(runtime: Phase1Pipeline) -> None:
@@ -101,17 +89,15 @@ def test_context_exception_and_normal_process_exit_both_release() -> None:
     assert not normal_backend.down
 
 
-def test_tracking_loss_during_drag_releases_at_configured_grace() -> None:
+def test_tracking_loss_releases_any_owned_button_at_configured_grace() -> None:
     runtime, backend = pipeline()
-    runtime.gestures.engagement = EngagementState.ENGAGED
-    runtime.gestures.gesture = GestureState.DRAGGING
     hold_left(runtime)
 
-    runtime.process_hand(invalid_hand(0))
+    runtime.process_frame(empty_frame(0))
     assert backend.down
-    runtime.process_hand(invalid_hand(199 * MS))
+    runtime.process_frame(empty_frame(199 * MS))
     assert backend.down
-    runtime.process_hand(invalid_hand(200 * MS))
+    runtime.process_frame(empty_frame(200 * MS))
 
     assert not backend.down
     assert backend.up_events == 1

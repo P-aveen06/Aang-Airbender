@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 
 from aang_airbender.actions import ActionDispatcher, QuartzActionBackend
-from aang_airbender.config import load_config
 from aang_airbender.types import EventKind, SemanticEvent
 
 
@@ -19,14 +18,7 @@ def wait_for_button_state(
 
 
 def exercise_release(label: str, *, simulate_failure: bool) -> None:
-    config = load_config()
-    dispatcher = ActionDispatcher(
-        QuartzActionBackend(),
-        double_click_interval_ms=int(config.section("timing")["double_click_interval_ms"]),
-        double_click_max_distance_pixels=float(
-            config.section("control")["double_click_max_distance_pixels"]
-        ),
-    )
+    dispatcher = ActionDispatcher(QuartzActionBackend())
     down_observed = False
     try:
         dispatcher.dispatch(SemanticEvent(EventKind.LEFT_DOWN, time.monotonic_ns()))

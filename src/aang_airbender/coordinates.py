@@ -21,11 +21,10 @@ def camera_to_display_orientation(point: Point2, *, camera_input_is_mirrored: bo
 
 
 def corrected_handedness(label: str | None, *, camera_input_is_mirrored: bool) -> str | None:
-    if label is None or not camera_input_is_mirrored:
+    if label is None or camera_input_is_mirrored:
         return label
-    # MediaPipe Tasks reports the physical hand for the unmirrored AVFoundation
-    # frame. Mirroring the input swaps the visible chirality, so only that path
-    # needs its label exchanged.
+    # MediaPipe handedness assumes selfie-mirrored input. OpenCV AVFoundation
+    # supplies an unmirrored frame, so exchange the model labels exactly once.
     if label == "Left":
         return "Right"
     if label == "Right":

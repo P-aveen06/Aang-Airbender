@@ -123,11 +123,16 @@ def test_extract_features_reports_open_fingers_scale_pinch_and_velocity() -> Non
     assert all(first.finger_extension)
     assert first.hand_scale > 0
     assert first.image_hand_scale > 0
+    assert first.index_tip == Point2(
+        synthetic_open_hand()[8].x,
+        synthetic_open_hand()[8].y,
+    )
     assert math.isfinite(first.pinch_ratio_index)
     assert first.index_middle_separation_ratio > 0
     assert first.palm_facing_score == pytest.approx(1.0)
     assert second.palm_velocity.x == pytest.approx(0.07)
     assert second.palm_velocity.y == pytest.approx(0.0)
+    assert second.anchor_velocity.x == pytest.approx(0.07)
 
 
 def test_extract_features_normalizes_downward_thumb_direction_by_image_hand_scale() -> None:
@@ -154,10 +159,10 @@ def test_palm_facing_score_rejects_back_of_hand_orientation() -> None:
     assert back_facing.palm_facing_score == pytest.approx(0.0)
 
 
-def test_recorded_camera_facing_open_palm_is_a_wake_pose() -> None:
+def test_recorded_camera_facing_open_palm_is_not_a_pointer_pose() -> None:
     config = load_config()
     features = extract_features(state(recorded_open_palm()), config)
 
     assert all(features.finger_extension)
-    assert features.palm_facing_score >= config.section("features")["min_palm_facing_score"]
-    assert classify_pose(features, config).wake_palm
+    assert features.palm_facing_score > 0.0
+    assert not classify_pose(features, config).strict_index_point

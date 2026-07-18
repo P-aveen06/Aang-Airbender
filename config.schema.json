@@ -1,73 +1,65 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Aang-Airbender Phase 1 configuration",
+  "title": "Aang-Airbender Phase 1 v1.2 configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["config_version", "perception", "features", "pinch", "poses", "timing", "control", "gestures", "debug"],
+  "required": ["config_version", "perception", "features", "pinch", "timing", "control", "debug"],
   "properties": {
-    "config_version": {"const": 1},
+    "config_version": {"const": 2},
     "perception": {
-      "type": "object", "additionalProperties": false,
-      "required": ["min_hand_detection_confidence", "min_hand_presence_confidence", "min_tracking_confidence"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["num_hands", "min_hand_detection_confidence", "min_hand_presence_confidence", "min_tracking_confidence"],
       "properties": {
+        "num_hands": {"const": 2},
         "min_hand_detection_confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "min_hand_presence_confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "min_tracking_confidence": {"type": "number", "minimum": 0, "maximum": 1}
       }
     },
     "features": {
-      "type": "object", "additionalProperties": false,
-      "required": ["palm_center_weights", "velocity_smoothing_alpha", "min_joint_angle_degrees", "max_curled_joint_angle_degrees", "min_palm_facing_score", "min_valid_confidence"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["palm_center_weights", "velocity_smoothing_alpha", "min_joint_angle_degrees", "max_curled_joint_angle_degrees", "min_valid_confidence"],
       "properties": {
         "palm_center_weights": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "number", "exclusiveMinimum": 0}},
         "velocity_smoothing_alpha": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
         "min_joint_angle_degrees": {"type": "number", "exclusiveMinimum": 90, "maximum": 180},
         "max_curled_joint_angle_degrees": {"type": "number", "minimum": 0, "exclusiveMaximum": 180},
-        "min_palm_facing_score": {"type": "number", "minimum": 0, "maximum": 1},
         "min_valid_confidence": {"type": "number", "minimum": 0, "maximum": 1}
       }
     },
     "pinch": {
-      "type": "object", "additionalProperties": false,
-      "required": ["closed_ratio", "open_ratio", "cross_pinch_open_ratio"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["closed_ratio", "open_ratio"],
       "properties": {
         "closed_ratio": {"type": "number", "exclusiveMinimum": 0},
-        "open_ratio": {"type": "number", "exclusiveMinimum": 0},
-        "cross_pinch_open_ratio": {"type": "number", "exclusiveMinimum": 0}
-      }
-    },
-    "poses": {
-      "type": "object", "additionalProperties": false,
-      "required": ["min_two_finger_separation_ratio", "min_thumb_down_direction_ratio"],
-      "properties": {
-        "min_two_finger_separation_ratio": {"type": "number", "exclusiveMinimum": 0},
-        "min_thumb_down_direction_ratio": {"type": "number", "exclusiveMinimum": 0}
+        "open_ratio": {"type": "number", "exclusiveMinimum": 0}
       }
     },
     "timing": {
-      "type": "object", "additionalProperties": false,
-      "required": ["pose_stability_ms", "wake_dwell_ms", "thumbs_down_dwell_ms", "hand_loss_grace_ms", "disengage_timeout_ms", "reacquisition_stability_ms", "right_click_dwell_ms", "double_click_interval_ms", "display_topology_check_ms"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pose_stability_ms", "hand_loss_grace_ms", "reacquisition_stability_ms", "display_topology_check_ms"],
       "properties": {
         "pose_stability_ms": {"type": "integer", "minimum": 0},
-        "wake_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
-        "thumbs_down_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
         "hand_loss_grace_ms": {"type": "integer", "exclusiveMinimum": 0},
-        "disengage_timeout_ms": {"type": "integer", "exclusiveMinimum": 0},
         "reacquisition_stability_ms": {"type": "integer", "minimum": 0},
-        "right_click_dwell_ms": {"type": "integer", "exclusiveMinimum": 0},
-        "double_click_interval_ms": {"type": "integer", "exclusiveMinimum": 0},
         "display_topology_check_ms": {"type": "integer", "exclusiveMinimum": 0}
       }
     },
     "control": {
-      "type": "object", "additionalProperties": false,
-      "required": ["one_euro_min_cutoff", "one_euro_beta", "one_euro_derivative_cutoff", "control_box", "scroll_gain", "natural_scrolling", "two_finger_scroll_displacement_ratio", "two_finger_scroll_velocity_ratio_per_second", "two_finger_stillness_radius_ratio", "double_click_max_distance_pixels"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["one_euro_min_cutoff", "one_euro_beta", "one_euro_derivative_cutoff", "control_box"],
       "properties": {
         "one_euro_min_cutoff": {"type": "number", "exclusiveMinimum": 0},
         "one_euro_beta": {"type": "number", "minimum": 0},
         "one_euro_derivative_cutoff": {"type": "number", "exclusiveMinimum": 0},
         "control_box": {
-          "type": "object", "additionalProperties": false,
+          "type": "object",
+          "additionalProperties": false,
           "required": ["left", "top", "right", "bottom"],
           "properties": {
             "left": {"type": "number", "minimum": 0, "maximum": 1},
@@ -75,25 +67,12 @@
             "right": {"type": "number", "minimum": 0, "maximum": 1},
             "bottom": {"type": "number", "minimum": 0, "maximum": 1}
           }
-        },
-        "scroll_gain": {"type": "number", "exclusiveMinimum": 0},
-        "natural_scrolling": {"type": "boolean"},
-        "two_finger_scroll_displacement_ratio": {"type": "number", "exclusiveMinimum": 0},
-        "two_finger_scroll_velocity_ratio_per_second": {"type": "number", "exclusiveMinimum": 0},
-        "two_finger_stillness_radius_ratio": {"type": "number", "exclusiveMinimum": 0},
-        "double_click_max_distance_pixels": {"type": "number", "exclusiveMinimum": 0}
-      }
-    },
-    "gestures": {
-      "type": "object", "additionalProperties": false,
-      "required": ["right_click_candidate", "enable_two_finger_dwell_right_click_fallback"],
-      "properties": {
-        "right_click_candidate": {"enum": ["two_finger_dwell", "middle_pinch"]},
-        "enable_two_finger_dwell_right_click_fallback": {"type": "boolean"}
+        }
       }
     },
     "debug": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": ["render_every_n_frames", "state_transition_history_capacity"],
       "properties": {
         "render_every_n_frames": {"type": "integer", "minimum": 1},

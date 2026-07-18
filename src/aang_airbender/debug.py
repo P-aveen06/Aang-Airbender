@@ -4,13 +4,14 @@ from typing import Any
 
 from .fsm import GestureEngine
 from .poses import PoseClassification
-from .types import HandFeatures, HandState
+from .types import HandFeatures, HandFrame
 
-# OpenCV uses BGR. These mirror the design system's primary text and light background.
-DEBUG_TEXT_BGR = (27, 24, 24)
+# OpenCV uses BGR. Small black text with a light outline stays legible without
+# covering the user's target area.
+DEBUG_TEXT_BGR = (20, 20, 20)
 DEBUG_TEXT_OUTLINE_BGR = (248, 250, 251)
-DEBUG_FONT_SCALE = 0.38
-DEBUG_LINE_HEIGHT_PX = 17
+DEBUG_FONT_SCALE = 0.34
+DEBUG_LINE_HEIGHT_PX = 15
 DEBUG_MARGIN_PX = 8
 
 
@@ -38,47 +39,50 @@ class DebugRenderer:
     def render(
         self,
         image_bgr: Any,
-        hand: HandState,
-        features: HandFeatures | None,
-        pose: PoseClassification | None,
+        frame: HandFrame,
+        right_features: HandFeatures | None,
+        left_features: HandFeatures | None,
+        right_pose: PoseClassification | None,
+        left_pose: PoseClassification | None,
         engine: GestureEngine,
     ) -> None:
-        if hand.frame_id % self._every_n_frames:
+        if frame.frame_id % self._every_n_frames:
             return
         image = image_bgr.copy()
         height, width = image.shape[:2]
-        for landmark in hand.image_landmarks:
-            self._cv2.circle(
-                image,
-                (int(landmark.x * width), int(landmark.y * height)),
-                3,
-                (0, 255, 0),
-                -1,
-            )
-        pose_names = "none"
-        if pose is not None:
-            pose_names = (
-                ",".join(
-                    name
-                    for name, active in (
-                        ("point", pose.pointer_family),
-                        ("index-pinch", pose.index_pinch_closed),
-                        ("middle-pinch", pose.middle_pinch_closed),
-                        ("two", pose.two_finger),
-                        ("fist", pose.fist),
-                        ("thumb-down", pose.thumbs_down),
-                        ("wake", pose.wake_palm),
-                    )
-                    if active
+        for hand in frame.hands:
+            color = (40, 180, 40) if hand.handedness == "Right" else (220, 120, 20)
+            for landmark in hand.image_landmarks:
+                self._cv2.circle(
+                    image,
+                    (int(landmark.x * width), int(landmark.y * height)),
+                    2,
+                    color,
+                    -1,
                 )
-                or "unknown"
-            )
-        confidence = 0.0 if features is None else features.confidence
-        callback_latency_ms = (hand.callback_timestamp_ns - hand.capture_timestamp_ns) / 1_000_000
+        right_status = (
+            "missing"
+            if right_pose is None
+            else "POINT"
+            if right_pose.strict_index_point
+            else "inactive"
+        )
+        if left_pose is None:
+            left_status = "missing"
+        elif left_pose.index_pinch_closed:
+            left_status = "pinched"
+        elif left_pose.index_pinch_open:
+            left_status = "open"
+        else:
+            left_status = "ambiguous"
+        right_confidence = 0.0 if right_features is None else right_features.confidence
+        left_confidence = 0.0 if left_features is None else left_features.confidence
+        callback_latency_ms = (frame.callback_timestamp_ns - frame.capture_timestamp_ns) / 1_000_000
         lines = (
-            f"pose={pose_names} confidence={confidence:.2f}",
-            f"engagement={engine.engagement.name} gesture={engine.gesture.name}",
-            f"frame={hand.frame_id} callback_ms={callback_latency_ms:.1f}",
+            f"R pointer={right_status} {right_confidence:.2f} | "
+            f"L click={left_status} {left_confidence:.2f}",
+            f"state={engine.state.name} frame={frame.frame_id} "
+            f"callback={callback_latency_ms:.1f}ms",
         )
         for line, origin in zip(lines, debug_text_origins(height, len(lines)), strict=True):
             self._cv2.putText(
