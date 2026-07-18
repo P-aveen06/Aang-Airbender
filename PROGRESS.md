@@ -8,8 +8,8 @@
 **Decision:** Pending  
 **Target branch:** `develop`  
 **Implementation branch:** `codex/phase-0-spike`
-**Pull request:**  
-**Commit SHA reviewed:**  
+**Pull request:** <https://github.com/P-aveen06/Aang-Airbender/pull/1>
+**Commit SHA reviewed:** `3d16fbb` (author self-review; later PR-link-only commit excluded)
 **Target machine:** M2 MacBook Air, macOS 13+  
 **Python:** 3.11, ARM64
 
