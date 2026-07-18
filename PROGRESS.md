@@ -415,3 +415,10 @@ The required user-recorded 30-second landmark fixture, short video, five-minute 
 44-unit target acquisition evidence, 10-minute normal false-click session, 30-minute adversarial
 session, and real Quartz safety/loss checks remain **UNVERIFIED**. Exact commands and evidence fields
 are in `PHASE_1_VALIDATION.md`.
+
+### Target-Mac debug-preview feedback
+
+- User screenshot showed the initial yellow debug text had insufficient contrast against a light
+  wall and was difficult to read.
+- Changed the debug overlay to design-system-aligned off-white text with a dark outline so it remains
+  legible over both light and dark camera content. This affects only the opt-in Phase 1 debug preview.
