@@ -1,0 +1,11 @@
+Read `CODEX_HANDOVER.md`, `PLAN.md`, `PHASE_0_CHECKLIST.md`, `PROGRESS.md`, and `.github/PULL_REQUEST_TEMPLATE.md` fully, then inspect the repository before editing anything.
+
+You are the implementation author. Create a dedicated branch from `develop` and implement Aang-Airbender Phase 0 only:
+
+webcam capture through OpenCV AVFoundation → MediaPipe Tasks Hand Landmarker LIVE_STREAM with monotonic timestamps and latest-result handoff → landmarks 5/17 palm-midpoint mapping → raw Quartz cursor movement.
+
+Also implement the scripted Camera/Accessibility preflight, timing report, idempotent `safe_release_all()`, and objective Quartz button-state test.
+
+Run all checks available in the current environment. Record exact commands, outputs, measurements, blockers, and target-Mac-only `UNVERIFIED` items in `PROGRESS.md`. Self-review the complete diff against the frozen plan and checklist, complete the PR evidence template, and raise a pull request into `develop`.
+
+Do not merge the PR, approve your own work, relax acceptance criteria, implement Phase 1 features, or expand the frozen plan. Stop after handing the ready PR to Claude for independent validation and review.

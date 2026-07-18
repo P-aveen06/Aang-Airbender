@@ -1,0 +1,9 @@
+Act as the independent validator and reviewer for the Aang-Airbender Phase 0 pull request into `develop`.
+
+Read `CLAUDE_REVIEW_HANDOVER.md`, `PLAN.md`, `PHASE_0_CHECKLIST.md`, `PROGRESS.md`, the completed PR description, and the complete diff. Do not rely on Codex's summary alone.
+
+Review safety first, then scope, concurrency, timestamp correctness, permission handling, native ARM64 setup, pipeline behavior, measurements, and reproducibility. Run all documented checks available in your environment. Perform the target-Mac validation steps only when you have actual machine access; otherwise mark those items unverified rather than passing them by inspection.
+
+Report findings with severity, exact location, violated invariant, failure scenario, minimum fix, and closure evidence. Finish with exactly one verdict: `APPROVE`, `REQUEST CHANGES`, or `INCOMPLETE EVIDENCE`.
+
+Do not rewrite the frozen plan, expand Phase 0, waive acceptance criteria, implement fixes yourself unless the user explicitly changes your role, or merge the PR.
