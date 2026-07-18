@@ -18,7 +18,8 @@
 - Date: 2026-07-18
 - macOS version: 26.5.1 (build 25F80)
 - Hardware: MacBook Air (Mac14,2), Apple M2, 16 GB
-- Terminal application: Codex desktop task runner; target Terminal permission/restart flow `UNVERIFIED`
+- Terminal application: user-run terminal shell (application name not reported); Codex task runner
+  used for author-side automation
 - Python version and architecture: CPython 3.11.14, `arm64` (observed)
 - `uv` version: 0.9.13
 - MediaPipe version: 0.10.21
@@ -55,6 +56,13 @@ MPLCONFIGDIR=/private/tmp/aang-matplotlib \
 MPLCONFIGDIR=/private/tmp/aang-matplotlib \
   .venv/bin/python -u -m aang_airbender.app --duration-seconds 10
 .venv/bin/python -u scripts/verify_safe_release.py
+
+# User-run target-Mac validation
+uv run python scripts/preflight.py
+uv run python -m aang_airbender.app --duration-seconds 30
+uv run python -m aang_airbender.app --duration-seconds 30
+uv run python scripts/verify_safe_release.py
+uv run python scripts/verify_safe_release.py
 ```
 
 Observed setup output:
@@ -90,64 +98,69 @@ mediapipe 0.10.21; opencv-python 4.11.0.86; pyobjc-framework-Quartz 12.2.1
 
 ## Permission preflight
 
-- Accessibility check: **FAILED** — corrected preflight called
-  `ApplicationServices.AXIsProcessTrusted()` and observed `False`, with terminal-restart guidance.
+- Accessibility check: **PASS** — user-run preflight called
+  `ApplicationServices.AXIsProcessTrusted()` and observed `True`.
 - Camera-open check: **PASS** — AVFoundation opened and returned a frame after warm-up retry.
-- Terminal restarted after grant: **UNVERIFIED**
-- Notes: Camera capture now works. Accessibility must be granted and the runner fully restarted
-  before visible cursor and objective mouse-down safety validation.
+- Terminal restarted after grant: permission is active in the user-run shell; whether a full
+  application restart was required was not separately reported.
+- Notes: Target-Mac preflight output ended with `PREFLIGHT PASSED`.
 
 ## Capture results
 
 - Requested resolution/FPS: 640x480 at 30 fps
 - Actual resolution: 640x480
-- Achieved capture FPS: 24.04 during a bounded 10.03-second run
-- Median frame age at submission: 0.62 ms
-- p95 frame age at submission: 1.23 ms
+- Achieved capture FPS: 29.80 and 29.94 in two bounded 30.03-second user runs
+- Median frame age at submission: 0.66 ms (run 1); 0.54 ms (run 2)
+- p95 frame age at submission: 1.22 ms (run 1); 1.20 ms (run 2)
 - `CAP_PROP_BUFFERSIZE` observed behavior: set to 1; backend reported 0.0. This is not treated as
   proof of buffering behavior; frame age is the evidence.
 
 ## MediaPipe results
 
-- Submitted frames: 241
-- Callback results: 241
-- Capture-slot drops: 0
-- Result-slot drops: 0
-- Stale/out-of-order results: 0
-- Inferred dropped results: 0
-- Callback/result cadence: 24.03 Hz
+- Submitted frames: 894 (run 1); 899 (run 2)
+- Callback results: 894 (run 1); 899 (run 2)
+- Capture-slot drops: 1 (run 1); 0 (run 2)
+- Result-slot drops: 0 in both runs
+- Stale/out-of-order results: 0 in both runs
+- Inferred dropped results: 0 in both runs
+- Callback/result cadence: 29.78 Hz (run 1); 29.95 Hz (run 2)
 
 ## Software pipeline latency
 
-- Median capture-to-Quartz dispatch: **UNVERIFIED** — no hand landmarks during bounded run
-- p95 capture-to-Quartz dispatch: **UNVERIFIED** — no hand landmarks during bounded run
-- Measurement duration/sample count: 10.03 seconds / 0 Quartz dispatch samples
+- Median capture-to-Quartz dispatch: 20.09 ms (run 1); 19.62 ms (run 2)
+- p95 capture-to-Quartz dispatch: 219.64 ms (run 1); 20.95 ms (run 2)
+- Measurement duration/sample count: 30.03 seconds / 733 dispatches (run 1); 30.03 seconds /
+  811 dispatches (run 2)
+- Tail-latency note: run 1 contained a material p95 outlier that did not reproduce in run 2.
+  Preserve this evidence and investigate recurrence during Phase 1 performance work.
 
 > This is software pipeline latency. It excludes camera exposure/sensor delay before frame acquisition and display composition/refresh.
 
 ## Cursor behavior
 
-- Palm midpoint visibly controls cursor: **UNVERIFIED** — Accessibility denied
+- Palm midpoint visibly controls cursor: **UNVERIFIED** — user has not yet reported the visual result
 - X mirroring correct: **UNVERIFIED** manually; mapping unit test passed
 - Main-display mapping correct: **UNVERIFIED** manually; mapping unit test passed
 - Observed jitter or lag: **UNVERIFIED**
 
 ## Safety results
 
-- Simulated failure after left-button-down: attempted; test down was not observable because
-  Accessibility is denied
+- Simulated failure after left-button-down: **PASS** twice; Quartz observed the test down and the
+  combined-session state was `False` after release
 - `safe_release_all()` called: yes, in the safety script's `finally` path and app shutdown path
-- Quartz button state after release: `False`, but full down-then-release assertion is `UNVERIFIED`
-- Shutdown release assertion: app reported `quartz_left_button_down_after_shutdown=False`
+- Quartz button state after release: `False` after controlled failure and normal shutdown, twice
+- Shutdown release assertion: **PASS**; both app runs and both safety-script runs reported release
 
 Observed safety-script output:
 
 ```text
 controlled_failure: simulated=controlled pipeline failure
-controlled_failure: down_observed=False combined_session_left_button_down_after_release=False
-RuntimeError: Quartz did not observe the test mouse-down. Run the permission preflight and grant
-Accessibility before repeating this test.
+controlled_failure: down_observed=True combined_session_left_button_down_after_release=False
+normal_shutdown: down_observed=True combined_session_left_button_down_after_release=False
+SAFE RELEASE ASSERTIONS PASSED
 ```
+
+The complete safe-release command passed twice.
 
 ## Author tests
 
@@ -160,31 +173,33 @@ fresh-environment pytest: PASS (14 passed in 1.40s)
 
 ## OpenCV decision
 
-- [ ] Accept OpenCV AVFoundation for Phase 1.
+- [x] Accept OpenCV AVFoundation for Phase 1.
 - [ ] Replace with native `AVCaptureSession` in Phase 1.
 
 Reason:
 
-Pending a target run with hand landmarks and Accessibility permission. The observed frame age is
-low, but the 10-second/no-hand sample is insufficient for the Phase 1 backend decision.
+Both target runs sustained approximately 30 fps with p95 frame age at or below 1.22 ms, one or zero
+capture-slot drops, and no inferred MediaPipe drops. Retain OpenCV for the Phase 1 starting point.
+The run-1 software-latency tail outlier remains a performance investigation item and is not attributed
+to capture buffering without evidence.
 
 ## Acceptance gate — author evidence
 
-- [ ] Permission preflight passes.
+- [x] Permission preflight passes.
 - [x] Python 3.11 ARM64 environment installs cleanly.
 - [ ] Cursor follows palm midpoint on target Mac.
 - [x] No unbounded frame/result queue exists.
-- [ ] Frame age and software pipeline timing are measured.
-- [ ] No held mouse state survives failure or shutdown.
+- [x] Frame age and software pipeline timing are measured.
+- [x] No held mouse state survives failure or shutdown.
 
 ## Codex Phase 0 decision
 
 **PASS / FAIL / PARTIALLY VERIFIED:** PARTIALLY VERIFIED
 
 Rationale: Environment, architecture, clean install, bounded handoffs, MediaPipe `LIVE_STREAM`,
-camera capture, callback cadence, frame age, shutdown cleanup, formatting, lint, and automated tests
-are verified. Accessibility preflight, visible cursor behavior, dispatch latency with a detected hand,
-and objective down-then-release Quartz state remain unverified, so Phase 0 has not passed.
+camera capture, callback cadence, frame age, software dispatch latency, permission preflight,
+objective safe release, formatting, lint, and automated tests are verified. The user's visual cursor,
+mirroring, and main-display observations remain unreported, so Phase 0 has not passed yet.
 
 ## Claude independent validation
 
@@ -215,8 +230,8 @@ Notes:
 
 ## Blockers and Phase 1 notes
 
-- Accessibility permission is not granted to the current runner.
-- Cursor behavior, timing measurements, and objective Quartz safe-release assertions remain
-  `UNVERIFIED` until the permission preflight passes on the target Mac.
+- Run 1 showed 219.64 ms p95 software latency versus 20.95 ms in run 2; monitor for recurrence.
+- Visual cursor following, X mirroring, and main-display mapping remain `UNVERIFIED` until the user
+  reports what was observed during the target-Mac run.
 
 Do not begin Phase 1 automatically.
