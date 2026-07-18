@@ -422,3 +422,38 @@ are in `PHASE_1_VALIDATION.md`.
   wall and was difficult to read.
 - Changed the debug overlay to design-system-aligned off-white text with a dark outline so it remains
   legible over both light and dark camera content. This affects only the opt-in Phase 1 debug preview.
+
+### Target-Mac open-palm engagement regression
+
+User-provided 22.36-second screen recording from 2026-07-18 showed stable 21-landmark tracking at
+0.94–0.99 confidence while a camera-facing open palm was repeatedly reported as `pose=point` and
+the controller remained `engagement=DISENGAGED`. The cursor therefore correctly received no motion
+intent, but the wake-palm predicate was unreachable for that real hand.
+
+An offline MediaPipe Tasks `IMAGE`-mode diagnostic on an extracted recording frame reproduced the
+failure with all five fingers extended. The raw model result was `Left` at 0.988 confidence, but the
+unmirrored AVFoundation path incorrectly exchanged it to `Right`; the handedness-dependent palm
+normal then produced `palm_facing_score=0.0`, preventing wake recognition. The physical handedness
+label now remains unchanged for unmirrored input and is exchanged only when the camera input itself
+is mirrored. Pointer X mapping remains unchanged and continues to mirror exactly once.
+
+Added an anonymous 21-point geometry regression derived from the failing frame. It asserts that the
+recorded open palm has five extended digits, passes the configured palm-facing threshold, and is
+classified as `wake_palm`.
+
+Validation:
+
+```text
+uv run ruff format --check .
+37 files already formatted
+
+uv run ruff check .
+All checks passed!
+
+uv run pytest -q
+56 passed in 3.78s
+```
+
+Live camera confirmation after the fix is **UNVERIFIED — requires the user's rerun**. Expected debug
+sequence is `wake` → `ARMING` → `ENGAGED` after holding the open palm for about 0.9 seconds; cursor
+movement should then be available for the pointer pose.
