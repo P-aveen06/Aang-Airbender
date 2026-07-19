@@ -723,3 +723,84 @@ normally. This is a bounded false negative for that variation and a correct fail
 with no phantom click or stuck button. The target-Mac evidence verifies the latency correction and
 five-click browser registration. Broader Phase 1 precision, Dock/Excalidraw behavior, and the full
 gesture-confusion matrix remain separate acceptance checks.
+
+### 2026-07-19 target-Mac validation §1 — environment and automated checks
+
+The owner ran the first validation block from the Accessibility-trusted terminal on the target M2
+MacBook Air at head `63d5c3e`. Dependency sync, permission/camera preflight, the complete test
+suite, and both objective safe-release scenarios passed:
+
+```text
+uv sync --frozen
+Uninstalled 1 package in 157ms
+Installed 1 package in 22ms
+~ mediapipe==0.10.21
+
+uv run python scripts/preflight.py
+Uninstalled 1 package in 93ms
+Installed 1 package in 41ms
+Python: 3.11.14
+Architecture: arm64
+Accessibility trusted: True
+AVFoundation camera opened: True
+AVFoundation camera frame read: True
+PREFLIGHT PASSED
+
+uv run pytest -q
+Uninstalled 1 package in 81ms
+Installed 1 package in 17ms
+........................................................................... [100%]
+75 passed in 3.72s
+
+uv run python scripts/verify_safe_release.py
+Uninstalled 1 package in 123ms
+Installed 1 package in 19ms
+controlled_failure: simulated=controlled pipeline failure
+controlled_failure: down_observed=True combined_session_left_button_down_after_release=False
+normal_shutdown: down_observed=True combined_session_left_button_down_after_release=False
+SAFE RELEASE ASSERTIONS PASSED
+
+uv run ruff format --check .
+Uninstalled 1 package in 82ms
+Installed 1 package in 18ms
+38 files already formatted
+
+uv run ruff check .
+Uninstalled 1 package in 83ms
+Installed 1 package in 16ms
+All checks passed!
+```
+
+This establishes the correct Python/architecture, trusted Accessibility permission, working camera,
+official-model test coverage, and no surviving left-button state after either controlled failure or
+normal shutdown. All six required commands passed; target-Mac validation §1 is **PASS**.
+
+### 2026-07-19 target-Mac validation §2 — fixture capture
+
+The owner ran both explicit opt-in fixture recorders. The landmark fixture is technically valid:
+
+```text
+tests/fixtures/landmarks/phase1-recorded.jsonl
+size=2.2 MiB records=820 valid=784 invalid=36
+captured_landmark_span_s=28.1602 approximate_callback_hz=29.12
+schema_versions=[1]
+```
+
+An offline replay inspection found valid examples from every requested gesture family:
+
+```text
+wake_palm=515 pointer_active=616 index_pinch_closed=20 middle_pinch_closed=9
+two_finger=9 fist=103 thumbs_down=2
+```
+
+The first requested video decoded without errors at 640×480 and 30 fps, but contained only 94
+frames / 3.13 seconds. Representative frames showed the owner's face without a visible hand
+gesture, so `phase1-short.mp4` does not satisfy the Phase 1 fixture gate and remains excluded from
+git.
+
+The owner recaptured and reviewed `tests/fixtures/videos/phase1-short-v2.mp4`. It decodes without
+errors and contains 185 frames / 6.17 seconds at 640×480 and 30 fps. Dense frame inspection confirms
+a clearly visible, stable open palm under the same lighting, distance, and camera setup as the
+landmark recording. The video shows the owner's face; after watching it, the owner explicitly
+approved both `phase1-recorded.jsonl` and `phase1-short-v2.mp4` for git on 2026-07-19. Section §2 is
+**PASS**. The original `phase1-short.mp4` is not approved and must remain uncommitted.

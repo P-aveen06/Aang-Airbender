@@ -16,6 +16,15 @@ uv run python scripts/verify_safe_release.py
 
 Record the complete outputs in `PROGRESS.md`.
 
+Target-Mac progress recorded 2026-07-19:
+
+- [x] `uv sync --frozen`
+- [x] permission and camera preflight
+- [x] `ruff format --check .`
+- [x] `ruff check .`
+- [x] complete `pytest` suite
+- [x] objective safe-release assertions
+
 ## 2. Explicit fixture capture
 
 These commands create camera-derived files. Review them before committing or sharing.
@@ -32,9 +41,9 @@ uv run python scripts/record_video_fixture.py \
   --i-understand-camera-derived-data
 ```
 
-- [ ] Landmark output reports approximately 30 seconds and a plausible callback-rate record count.
-- [ ] Short video opens locally and corresponds to the landmark-test conditions.
-- [ ] The owner has reviewed both files for privacy before adding either to git.
+- [x] Landmark output reports approximately 30 seconds and a plausible callback-rate record count.
+- [x] Short video opens locally and corresponds to the landmark-test conditions.
+- [x] The owner has reviewed both files for privacy before adding either to git.
 
 ## 3. Core-five smoke session
 
