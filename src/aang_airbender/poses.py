@@ -107,5 +107,5 @@ def classify_pose(features: HandFeatures, config: Phase1Config) -> PoseClassific
         index_pinch_closed=index_pinch,
         index_pinch_open=confidence_valid and index_open,
         middle_pinch_closed=middle_pinch,
-        middle_pinch_open=confidence_valid and middle_open and index_cross_open,
+        middle_pinch_open=confidence_valid and middle_open,
     )

@@ -95,15 +95,22 @@ class ControlEngine:
         self.bounds = bounds
         self.pointer_filter = PointerFilter(config)
         self._clutched = False
+        self._pointer_position: Point2 | None = None
+        self._pointer_offset = Point2(0.0, 0.0)
+        self._pointer_rebaseline_pending = False
         self._scroll_last_timestamp_ns: int | None = None
+        self._scroll_residual = Point2(0.0, 0.0)
 
     def consume(self, intent: GestureIntent) -> tuple[SemanticEvent, ...]:
         if intent.kind is IntentKind.CANCEL:
             self.pointer_filter.reset()
+            self._pointer_rebaseline_pending = self._pointer_position is not None
             self._scroll_last_timestamp_ns = None
+            self._scroll_residual = Point2(0.0, 0.0)
             return ()
         if intent.kind is IntentKind.ENGAGE_REQUEST:
             self.pointer_filter.reset()
+            self._pointer_rebaseline_pending = self._pointer_position is not None
             return ()
         if intent.kind is IntentKind.CLUTCH_ON:
             self._clutched = True
@@ -111,6 +118,7 @@ class ControlEngine:
         if intent.kind is IntentKind.CLUTCH_OFF:
             self._clutched = False
             self.pointer_filter.reset()
+            self._pointer_rebaseline_pending = self._pointer_position is not None
             return ()
         if intent.kind is IntentKind.PINCH_START:
             return (SemanticEvent(EventKind.LEFT_DOWN, intent.timestamp_ns),)
@@ -120,9 +128,11 @@ class ControlEngine:
             return (SemanticEvent(EventKind.RIGHT_CLICK, intent.timestamp_ns),)
         if intent.kind is IntentKind.SCROLL_START:
             self._scroll_last_timestamp_ns = intent.timestamp_ns
+            self._scroll_residual = Point2(0.0, 0.0)
             return ()
         if intent.kind is IntentKind.SCROLL_END:
             self._scroll_last_timestamp_ns = None
+            self._scroll_residual = Point2(0.0, 0.0)
             return ()
         if intent.kind is IntentKind.SCROLL_UPDATE:
             if intent.velocity is None:
@@ -138,6 +148,23 @@ class ControlEngine:
                 filtered, camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED
             )
             mapped = map_control_box_to_display(oriented, self.config.control_box, self.bounds)
+            if self._pointer_rebaseline_pending and self._pointer_position is not None:
+                self._pointer_offset = Point2(
+                    self._pointer_position.x - mapped.x,
+                    self._pointer_position.y - mapped.y,
+                )
+            self._pointer_rebaseline_pending = False
+            mapped = Point2(
+                min(
+                    max(mapped.x + self._pointer_offset.x, self.bounds.x),
+                    self.bounds.x + self.bounds.width,
+                ),
+                min(
+                    max(mapped.y + self._pointer_offset.y, self.bounds.y),
+                    self.bounds.y + self.bounds.height,
+                ),
+            )
+            self._pointer_position = mapped
             return (
                 SemanticEvent(
                     EventKind.POINTER_MOVE,
@@ -159,11 +186,23 @@ class ControlEngine:
         settings = self.config.section("control")
         direction = 1.0 if settings["natural_scrolling"] else -1.0
         gain = float(settings["scroll_gain"])
+        self._scroll_residual = Point2(
+            self._scroll_residual.x + direction * intent.velocity.x * gain * elapsed,
+            self._scroll_residual.y + direction * intent.velocity.y * gain * elapsed,
+        )
+        pixel_dx = math.trunc(self._scroll_residual.x)
+        pixel_dy = math.trunc(self._scroll_residual.y)
+        self._scroll_residual = Point2(
+            self._scroll_residual.x - pixel_dx,
+            self._scroll_residual.y - pixel_dy,
+        )
+        if pixel_dx == 0 and pixel_dy == 0:
+            return ()
         return (
             SemanticEvent(
                 EventKind.SCROLL,
                 intent.timestamp_ns,
-                pixel_dx=direction * intent.velocity.x * gain * elapsed,
-                pixel_dy=direction * intent.velocity.y * gain * elapsed,
+                pixel_dx=float(pixel_dx),
+                pixel_dy=float(pixel_dy),
             ),
         )

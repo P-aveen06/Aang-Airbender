@@ -83,6 +83,36 @@ def test_middle_pinch_requires_index_cross_pinch_open() -> None:
     ).middle_pinch_closed
 
 
+def test_middle_pinch_accepts_observed_target_mac_contact_margin() -> None:
+    pose = classify_pose(
+        features((True, True, False, True, True), index_ratio=0.621, middle_ratio=0.3518),
+        load_config(),
+    )
+
+    assert pose.middle_pinch_closed
+
+
+def test_observed_cross_pinch_margin_remains_ambiguous() -> None:
+    pose = classify_pose(
+        features((True, True, False, True, True), index_ratio=0.469, middle_ratio=0.182),
+        load_config(),
+    )
+
+    assert not pose.index_pinch_closed
+    assert not pose.middle_pinch_closed
+    assert not pose.pointer_active
+
+
+def test_middle_pinch_release_depends_on_middle_tip_opening() -> None:
+    pose = classify_pose(
+        features((True, True, True, True, True), index_ratio=0.440, middle_ratio=0.766),
+        load_config(),
+    )
+
+    assert not pose.index_pinch_closed
+    assert pose.middle_pinch_open
+
+
 def test_ambiguous_cross_pinch_zone_emits_neither_pinch() -> None:
     classified = classify_pose(
         features((True, True, True, True, True), index_ratio=0.3, middle_ratio=0.3),

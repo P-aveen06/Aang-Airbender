@@ -14,7 +14,7 @@ features:
   min_valid_confidence: 0.6
 
 pinch:
-  closed_ratio: 0.35
+  closed_ratio: 0.36
   open_ratio: 0.50
   cross_pinch_open_ratio: 0.50
 
@@ -52,6 +52,14 @@ control:
 gestures:
   right_click_candidate: middle_pinch
   enable_two_finger_dwell_right_click_fallback: false
+
+preview:
+  width: 280
+  height: 200
+  margin: 20
+  corner_radius: 16
+  mirror: true
+  render_every_n_frames: 1
 
 debug:
   render_every_n_frames: 3

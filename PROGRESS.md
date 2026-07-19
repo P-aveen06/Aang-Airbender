@@ -804,3 +804,1112 @@ a clearly visible, stable open palm under the same lighting, distance, and camer
 landmark recording. The video shows the owner's face; after watching it, the owner explicitly
 approved both `phase1-recorded.jsonl` and `phase1-short-v2.mp4` for git on 2026-07-19. Section §2 is
 **PASS**. The original `phase1-short.mp4` is not approved and must remain uncommitted.
+
+### 2026-07-19 target-Mac validation §3 — five-minute core session
+
+The owner ran the controller without `--debug` for the required five minutes. The objective terminal
+summary was:
+
+```text
+measurement_duration_s=300.03 capture_fps=29.94 callback_hz=29.24
+submitted=8771 callbacks=8771 capture_slot_drops=3 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=6484 capture_to_quartz_median_ms=22.93 capture_to_quartz_p95_ms=32.84
+frame_age_at_submission_median_ms=0.65 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:30,LEFT_UP:30,POINTER_MOVE:6484,RIGHT_CLICK:2,SCROLL:88
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The no-debug cadence is close to capture rate, the corrected pipeline remains fresh, all 30 owned
+left-button cycles are balanced, no result backlog/drop is inferred, and shutdown leaves no held
+left button. Transition-log counts provide additional objective coverage:
+
+```text
+wake_dwell_complete=1
+pinch_stable=29 pinch_released=29 pinch_cancelled=7
+middle_pinch_released=2 right_click_neutral=2
+two_finger_motion=8 two_finger_released=8 two_finger_cancelled=41
+fist_clutch=10 clutch_released=8
+thumbs_down_candidate=1 thumbs_down_dwell_complete=1
+tracking_lost=3 hand_reacquired=3
+```
+
+The log directly verifies engagement, the configured thumbs-down disengagement path, semantic event
+emission, bounded fresh inference, balanced button safety, and the recorded summary. It does not
+establish whether applications visibly opened, dragged, right-clicked, or scrolled, whether the
+pointer anchor/response felt correct, or whether fist release caused a visible jump. It also shows
+that every established drag ended with `pinch_released`; no `DRAGGING -> ... fist` path occurred.
+Therefore the required active-drag-to-fist release check was not exercised in this run. Section §3
+is **PARTIALLY VERIFIED** pending the owner's visual confirmations and that focused retest.
+
+The owner's visual results for that run were:
+
+```text
+palm movement and screen travel: PASS
+application opened by thumb-index click: PASS
+file/object visibly dragged and released: PASS
+right-click menu appeared once per gesture: PASS
+page visibly scrolled: FAIL
+stationary two fingers caused no action: PASS
+fist clutched without disengaging: PASS
+fist release caused no cursor jump: FAIL
+sensitivity felt acceptable: PASS
+```
+
+The owner then ran a focused 45-second no-debug retest. Its objective summary was:
+
+```text
+measurement_duration_s=45.01 capture_fps=29.95 callback_hz=28.53
+submitted=1284 callbacks=1284 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=1072 capture_to_quartz_median_ms=27.85 capture_to_quartz_p95_ms=34.19
+frame_age_at_submission_median_ms=0.67 frame_age_at_submission_p95_ms=1.24
+action_events=LEFT_DOWN:6,LEFT_UP:6,POINTER_MOVE:1072
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+All six established drags again ended with `pinch_released`. The only
+`fist_candidate_safe_release` transition began from `POINTING`, not `DRAGGING`, and the run contains
+no `fist_release_before_clutch` transition. The focused retest therefore did not exercise the
+required drag-to-fist safety path. It is neither a pass nor a failure for that check. The visible
+scroll failure and fist-release cursor jump remain explicit §3 failures requiring correction and a
+fresh target-Mac retest.
+
+### 2026-07-19 §3 failure investigation and local correction
+
+The two visible failures had separate control-layer causes:
+
+- Scroll recognition produced semantic fractional-pixel deltas, but the Quartz boundary rounded
+  each frame independently. A slow deliberate motion could therefore count many `SCROLL` events
+  while repeatedly posting zero pixels. The control layer now carries fractional residuals across
+  frames, emits only whole nonzero pixel deltas, and clears the residual at scroll boundaries.
+- `CLUTCH_OFF` reset the One Euro filter but did not establish a cursor anchor. With absolute palm
+  mapping, the first post-fist point therefore moved immediately to the repositioned palm's mapped
+  screen coordinate. The control layer now retains the last emitted cursor position, anchors the
+  first post-clutch point exactly there, and applies subsequent palm displacement from that fresh
+  baseline within the display bounds. Safety cancellation and reacquisition use the same no-jump
+  baseline path.
+
+Both regression tests failed against the previous control implementation and pass with the local
+correction:
+
+```text
+tests/test_control.py::test_clutch_freezes_pointer_and_release_rebaselines_without_jump PASSED
+tests/test_control.py::test_safety_cancel_reacquires_from_the_last_cursor_position PASSED
+tests/test_control.py::test_fractional_pixel_scroll_accumulates_instead_of_emitting_rounded_zeroes PASSED
+```
+
+Local verification after the correction:
+
+```text
+.venv/bin/ruff format --check .
+38 files already formatted
+
+.venv/bin/ruff check .
+All checks passed!
+
+.venv/bin/python -m compileall -q src scripts tests
+passed
+
+.venv/bin/pytest -q --ignore=tests/test_model_smoke.py
+76 passed in 23.02s
+
+approved landmark replay:
+action_events=LEFT_DOWN:1,LEFT_UP:1,POINTER_MOVE:597,RIGHT_CLICK:1
+reported_false_actions=none
+left_down_after_replay=False
+```
+
+The Codex-hosted process cannot create MediaPipe's macOS OpenGL pixel format or observe injected
+Quartz mouse-down state, so `test_model_smoke.py` and `verify_safe_release.py` remain target-terminal
+checks for this correction. The owner had already passed both classes of check before this diff.
+Visible scroll, no-jump fist release, and the still-unexercised drag-to-fist release ordering all
+require a fresh target-Mac run before §3 can pass.
+
+### 2026-07-19 §3 correction target-Mac attempts 1–2
+
+The owner ran the corrected controller twice for 90 seconds without `--debug`.
+
+Attempt 1:
+
+```text
+measurement_duration_s=90.03 capture_fps=29.97 callback_hz=28.94
+submitted=2604 callbacks=2604 capture_slot_drops=2 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=1387 capture_to_quartz_median_ms=23.19 capture_to_quartz_p95_ms=33.94
+frame_age_at_submission_median_ms=0.62 frame_age_at_submission_p95_ms=1.23
+action_events=LEFT_DOWN:3,LEFT_UP:3,POINTER_MOVE:1387,RIGHT_CLICK:1,SCROLL:394
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+Attempt 1 contained 39 `two_finger_motion` scroll episodes, three established drags, and three
+normal `pinch_released` drag endings. No fist clutch was attempted.
+
+Attempt 2:
+
+```text
+measurement_duration_s=90.03 capture_fps=29.98 callback_hz=29.58
+submitted=2663 callbacks=2663 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=1148 capture_to_quartz_median_ms=19.99 capture_to_quartz_p95_ms=23.87
+frame_age_at_submission_median_ms=0.63 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:2,LEFT_UP:2,POINTER_MOVE:1148,SCROLL:413
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+Attempt 2 contained 18 `two_finger_motion` episodes, 18 `fist_clutch` transitions, two established
+drags, and two normal `pinch_released` drag endings. Four transitions used
+`fist_release_before_clutch`, but their previous states were `TWO_FINGER_PENDING` twice,
+`PINCH_PENDING` once, and `SCROLLING` once. None began from `DRAGGING`. The required active-button
+release-before-clutch path therefore remains unexercised.
+
+Because the corrected control layer emits a semantic `SCROLL` event only when at least one whole,
+nonzero pixel is ready, the 394 and 413 counters prove that both target runs dispatched substantial
+nonzero Quartz scroll input. Terminal logs cannot establish that the foreground application visibly
+scrolled, nor can they show whether the cursor visually stayed fixed when the fist opened. Those two
+checks still require the owner's direct PASS/FAIL observation.
+
+The owner supplied the direct visual results after both attempts:
+
+```text
+page visibly moved: PASS
+cursor stayed still after opening fist: PASS
+```
+
+This closes the functional visible-scroll and no-jump clutch-release checks. The owner explicitly
+reported that scrolling, although working, was not sufficiently precise or accurate. That remains
+an open Phase 1 usability concern and is not being hidden by the functional PASS. The active
+drag-to-fist release-before-clutch check remains unverified because neither target run transitioned
+from `DRAGGING` into fist handling.
+
+### 2026-07-19 scroll continuity investigation and correction
+
+The owner clarified that scrolling was both jerky and delayed/insensitive to small movements. The
+target logs showed that recognition churn, rather than missing output smoothing, was the dominant
+cause. Palm velocity was already low-pass filtered with the configured `0.35` alpha, while the two
+target runs repeatedly left scroll mode:
+
+```text
+attempt 1: 80 pending cancellations / 39 scroll starts
+           median scroll episode 266.9 ms; 13/39 ended under 150 ms; 23/39 under 300 ms
+           median activation 102.7 ms; p95 activation 167.4 ms
+attempt 2: 23 pending cancellations / 18 scroll starts
+           median scroll episode 201.1 ms; 7/18 ended under 150 ms; 10/18 under 300 ms
+           median activation 132.8 ms; p95 activation 133.2 ms
+```
+
+Every one-frame two-finger classification dropout ended the active episode immediately. Returning
+to the same physical pose then restarted the configured stability/activation wait, producing the
+observed jerk-pause-ignore-restart cycle.
+
+The FSM now tolerates a valid-hand two-finger pose dropout for the existing configured
+`pose_stability_ms` interval. If the pose returns inside that interval, it remains locked in
+`SCROLLING` and emits a fresh `SCROLL_START` baseline before updates resume; this prevents both an
+activation restart and a catch-up velocity burst. A sustained pose break still emits `SCROLL_END`.
+Fist and existing engagement/safety cancellation are evaluated before the continuity grace and
+remain immediate.
+
+Regression coverage failed against the prior immediate-exit behavior and passes with the
+correction:
+
+```text
+tests/test_fsm.py::test_two_finger_motion_locks_to_scroll_until_pose_break_is_stable PASSED
+tests/test_fsm.py::test_scrolling_recovers_from_short_pose_dropout_with_a_fresh_scroll_baseline PASSED
+tests/test_fsm.py::test_fist_cancels_scrolling_immediately_without_pose_dropout_grace PASSED
+```
+
+Local verification:
+
+```text
+.venv/bin/ruff format --check .
+38 files already formatted
+
+.venv/bin/ruff check .
+All checks passed!
+
+.venv/bin/python -m compileall -q src scripts tests
+passed
+
+.venv/bin/pytest -q --ignore=tests/test_model_smoke.py
+78 passed in 23.89s
+```
+
+The earlier visible-scroll PASS is reopened only for the changed continuity behavior. A short
+target-Mac visual retest must confirm that small vertical movements start promptly and remain
+continuous without introducing phantom scroll after the two-finger pose is intentionally released.
+
+### 2026-07-19 scroll-continuity target-Mac PASS and §3 completion
+
+The owner ran two fresh 30-second no-debug sessions with the continuity correction. Their objective
+summaries were:
+
+```text
+run 1:
+measurement_duration_s=30.01 capture_fps=29.96 callback_hz=29.03
+submitted=871 callbacks=871 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=424 capture_to_quartz_median_ms=21.89 capture_to_quartz_p95_ms=34.05
+frame_age_at_submission_median_ms=0.63 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:1,LEFT_UP:1,POINTER_MOVE:424,SCROLL:176
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+
+run 2:
+measurement_duration_s=30.02 capture_fps=29.98 callback_hz=29.21
+submitted=877 callbacks=877 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=203 capture_to_quartz_median_ms=20.10 capture_to_quartz_p95_ms=23.32
+frame_age_at_submission_median_ms=0.65 frame_age_at_submission_p95_ms=1.22
+action_events=POINTER_MOVE:203,SCROLL:247
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The owner supplied these direct visual results:
+
+```text
+small movements respond: PASS
+scroll feels continuous: PASS
+scroll stops without phantom movement: PASS
+```
+
+Run 1 also finally exercised the exact active-drag-to-fist safety sequence:
+
+```text
+PINCH_PENDING -> DRAGGING reason=pinch_stable
+DRAGGING -> NEUTRAL reason=fist_release_before_clutch
+NEUTRAL -> CLUTCHED reason=fist_clutch
+```
+
+`fist_release_before_clutch` preceded `fist_clutch` by 100.71 ms, the single owned left-button cycle
+was balanced, and shutdown reported no held left button. Combined with the earlier direct
+observations that fist clutch did not disengage and fist release caused no cursor jump, this closes
+the previously missing drag-release-before-clutch requirement. All §3 core-five smoke-session items
+are now **PASS**. The scroll continuity correction did not weaken stationary-two-finger or explicit
+release safety criteria.
+
+### 2026-07-19 corrected-tree target automated and Quartz safety checks
+
+The owner reran the complete suite and objective safe-release script from the Accessibility-trusted
+target terminal after both control corrections:
+
+```text
+uv run pytest -q
+79 passed in 4.17s
+
+uv run python scripts/verify_safe_release.py
+controlled_failure: simulated=controlled pipeline failure
+controlled_failure: down_observed=True combined_session_left_button_down_after_release=False
+normal_shutdown: down_observed=True combined_session_left_button_down_after_release=False
+SAFE RELEASE ASSERTIONS PASSED
+```
+
+This supersedes the earlier 75-test target result for the corrected tree. Both the controlled
+failure and normal shutdown paths physically observed an owned mouse-down and verified that the
+combined-session left-button state was false after release.
+
+### 2026-07-19 confusion-gate failure and temporal cross-pinch correction
+
+The owner ran the required 120-second no-debug confusion session. Its objective summary was:
+
+```text
+measurement_duration_s=120.02 capture_fps=29.97 callback_hz=29.84
+submitted=3581 callbacks=3581 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=2270 capture_to_quartz_median_ms=19.69 capture_to_quartz_p95_ms=20.45
+frame_age_at_submission_median_ms=0.54 frame_age_at_submission_p95_ms=1.20
+action_events=LEFT_DOWN:23,LEFT_UP:23,POINTER_MOVE:2270,RIGHT_CLICK:9
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The owner's direct semantic observations override the software-only false-action placeholder:
+
+```text
+wrong-button clicks: 7
+ambiguous-pinch clicks: 5
+clicks while forming fist: 0
+fist incorrectly disengaged: NO
+thumbs-down incorrectly clutched: NO
+```
+
+Therefore the index-versus-middle confusion gate is **FAIL**, not PASS. The fist-formation and
+fist-versus-thumbs-down gates pass. The run did not complete either a natural full hand-loss timeout
+or a thumbs-down dwell; `thumbs_down_candidate` was interrupted by process exit, so those distinct
+checks remain open.
+
+The trace and a deterministic state-machine reproduction exposed a temporal gap in cross-pinch
+exclusion. Pose classification rejected a frame where the thumb was near both fingertips, but an
+already pending or armed pinch survived that ambiguous frame. On a later clear/open frame, the FSM
+could reuse the earlier stability time or commit the armed middle-pinch right click. Static pose
+tests did not cover that sequence.
+
+The FSM now cancels a pending index pinch whenever the middle-tip distance is not beyond the
+configured cross-pinch-open boundary. It likewise cancels an armed or pending middle pinch whenever
+the index-tip distance enters that boundary. Cancellation clears the candidate timestamp and middle
+arm, so recognition can restart only from a fresh, unambiguous episode. Active drag priority and
+release safety are unchanged.
+
+Regression evidence:
+
+```text
+before correction:
+tests/test_fsm.py::test_armed_middle_pinch_crossing_ambiguous_zone_emits_no_click FAILED
+tests/test_fsm.py::test_ambiguous_cross_pinch_restarts_index_stability_dwell FAILED
+
+after correction:
+focused regressions: 2 passed
+full suite: 81 passed in 3.33s
+ruff format --check: 38 files already formatted
+ruff check: All checks passed
+```
+
+The required target-Mac index-versus-middle confusion gate remains unchecked until a fresh run with
+the correction records zero wrong-button clicks and zero ambiguous-pinch clicks.
+
+### 2026-07-19 right-click non-recognition diagnostic run
+
+The owner reported that thumb-middle right click did not work in a fresh target run. The run was
+stopped after 28.93 seconds and emitted only `POINTER_MOVE:408`. It contained zero
+`middle_pinch_candidate`, `MIDDLE_PINCH_PENDING`, `middle_pinch_released`, or `RIGHT_CLICK` events.
+The temporal ambiguity correction cannot have canceled these attempts because its new guard runs
+only after a pinch candidate already exists.
+
+Before full disengagement, the observed command-like transitions were one completed fist clutch and
+five additional `fist_candidate_safe_release` transitions. This indicates that at least some hand
+shapes were classified as fists rather than thumb-middle pinches. A reliable diagnostic attempt must
+keep the non-pinching fingers visibly open, hold thumb-to-middle-tip contact for at least the
+configured 100 ms stability dwell, and then release fully; right click is emitted on release.
+
+The same run objectively completed the previously open natural hand-loss gate:
+
+```text
+ENGAGED -> SUSPENDED reason=tracking_lost
+POINTING -> NEUTRAL reason=tracking_loss_grace_expired
+SUSPENDED -> DISENGAGED reason=tracking_loss_timeout
+```
+
+No `thumbs_down_candidate` or `thumbs_down_dwell_complete` occurred. After the full timeout, the
+remaining roughly ten seconds of gestures were correctly ignored because no new open-palm wake
+dwell occurred. The natural hand-loss versus explicit thumbs-down confusion check is therefore
+**PASS**. Thumb-middle recognition remains unverified pending a short debug-preview run that shows
+the live pose label during the owner's attempted contact and release.
+
+### 2026-07-19 thumb-middle 2/10 debug result
+
+The owner attempted ten thumb-middle right-click gestures in a 30-second debug-preview run and
+reported only 2/10 correct. The event and transition counts expose the remaining eight outcomes:
+
+```text
+measurement_duration_s=30.03 capture_fps=29.97 callback_hz=29.54
+action_events=LEFT_DOWN:4,LEFT_UP:4,POINTER_MOVE:514,RIGHT_CLICK:2
+middle_pinch_candidate=2 middle_pinch_released=2
+index_pinch_candidate=6 pinch_stable=4 pinch_released=4 pinch_cancelled=2
+quartz_left_button_down_after_shutdown=False
+```
+
+All two middle-pinch candidates committed correctly on release. Four intended thumb-middle attempts
+instead completed balanced index-pinch left-click cycles, and two index-pinch candidates canceled;
+the remaining attempts were never classified as either stable pinch. The 2/10 result is therefore a
+recognition-layer confusion failure, not an FSM release failure and not a regression caused by the
+new pending-state ambiguity cancellation.
+
+A second 30-second debug command in the same attachment never completed open-palm engagement: it
+recorded 22 wake starts, 21 wake breaks, zero `wake_dwell_complete`, and `action_events=none`. That
+run contains no click evidence and does not change the 2/10 finding.
+
+The working hypothesis is that real thumb-middle contact under the owner's hand orientation and
+occlusion often produces inferred landmark geometry in which the thumb-index normalized distance
+crosses the index threshold first. Because the current recognizer uses tip-distance thresholds and
+gives cross-exclusive index recognition priority, that geometry becomes a wrong left click. A
+target landmark capture containing only labeled-by-protocol thumb-middle attempts is required to
+measure the actual ratios and finger geometry before changing the recognizer.
+
+### 2026-07-19 targeted thumb-middle landmark replay
+
+The owner created the requested local, camera-derived
+`tests/fixtures/landmarks/thumb-middle-10.jsonl` capture. The file remains untracked and is not
+approved for git. It contains 822 records over approximately 30 seconds: 758 valid tracked-hand
+records and 64 no-hand/invalid records.
+
+Production feature extraction and pose classification found 13 distinct near-pinch episodes in the
+performed sequence. Their geometry was cleanly separated:
+
+```text
+index-pinch classified frames: 0
+middle-pinch classified frames: 58
+middle-contact index-ratio range: approximately 0.78-1.07 (clearly open)
+middle-contact middle-ratio range: approximately 0.16-0.35 (closed threshold)
+```
+
+Replaying the exact timestamps through the production gesture FSM produced:
+
+```text
+middle_pinch_candidate=13
+middle_pinch_released=10
+middle_pinch_cancelled_before_stable=3
+RIGHT_CLICK=10
+index PINCH_START/PINCH_END=0
+```
+
+The three canceled episodes contained only about 60-70 ms of classified contact, below the
+configured 100 ms stability dwell. All sufficiently long controlled-posture episodes committed once
+on release, and no episode became a wrong left click. This disproves a universal MediaPipe landmark
+placement defect and confirms that the controlled posture can separate the two buttons for this
+owner. It also shows why reducing thresholds without another confusion run would be unsafe: the
+earlier live app posture produced four wrong left-click cycles, while the controlled capture
+produced none.
+
+No recognition threshold is changed from this replay alone. The next target app run must use the
+same controlled posture as the successful capture, hold each contact clearly beyond 100 ms, and
+report correct right clicks, wrong left clicks, and misses separately. The required confusion gate
+remains open until all wrong-button and ambiguous clicks are zero.
+
+### 2026-07-19 post-capture live app result and count discrepancy
+
+The owner reported that the controlled posture looked slightly better and supplied these visual
+counts:
+
+```text
+correct right clicks: 7
+wrong left clicks: 3
+missed clicks: 3
+```
+
+These sum to 13 observed attempts. The attached 30-second no-debug terminal trace objectively
+recorded a different button split:
+
+```text
+measurement_duration_s=30.03 capture_fps=29.94 callback_hz=29.41
+action_events=LEFT_DOWN:6,LEFT_UP:6,POINTER_MOVE:565,RIGHT_CLICK:4
+index_pinch_candidate=6 pinch_stable=6 pinch_released=6
+middle_pinch_candidate=4 middle_pinch_released=4 right_click_neutral=4
+quartz_left_button_down_after_shutdown=False
+```
+
+The software therefore emitted four right-click events and six complete left-button cycles. If all
+13 attempts were intended to be thumb-middle gestures, the objective result is 4 correct, 6
+wrong-button, and 3 unrecognized. If three of the six left cycles were intentional thumb-index
+controls, the owner's 7/3/3 categorization may include actions outside the isolated right-click
+trial. The intended gesture sequence must be clarified before assigning semantic labels to the ten
+emitted button cycles.
+
+Either interpretation still fails the mandatory zero-wrong-button confusion gate. No threshold or
+dwell change is made from this run because the controlled landmark fixture produced ten right
+clicks and zero left clicks under the same code, while this live trace produced the opposite
+classification mix. The next diagnostic must correlate intended gesture labels with the exact
+landmark/action timeline rather than relying on aggregate counts.
+
+The owner subsequently clarified that the run mixed intentional thumb-index gestures with
+thumb-middle gestures but did not know the count of intentional index attempts. Consequently the
+six emitted left-button cycles cannot be divided reliably into correct index actions and wrong
+middle-as-index actions. This mixed run is retained as evidence that the gate is not passed, but it
+is not used to calculate a confusion rate. Two isolated, fixed-count runs are required next.
+
+### 2026-07-19 isolated index-only and middle-only target runs
+
+The owner supplied two separate 30-second target runs, first using thumb-index only and then
+thumb-middle only.
+
+Index-only objective result:
+
+```text
+measurement_duration_s=30.00 capture_fps=29.96 callback_hz=29.90
+action_events=LEFT_DOWN:10,LEFT_UP:10,POINTER_MOVE:370
+pinch_stable=10 pinch_released=10
+RIGHT_CLICK=0
+quartz_left_button_down_after_shutdown=False
+```
+
+An eleventh index candidate began near shutdown but was canceled by `process_exit` before it could
+emit a button-down. One earlier candidate entered the ambiguous cross-pinch boundary, canceled, and
+then restarted from a fresh stability dwell before committing correctly. This directly exercises
+the temporal ambiguity correction without producing a wrong right click.
+
+Middle-only objective result:
+
+```text
+measurement_duration_s=30.03 capture_fps=29.94 callback_hz=29.45
+action_events=POINTER_MOVE:613,RIGHT_CLICK:16
+middle_pinch_candidate=17
+middle_pinch_released=16
+middle_pinch_cancelled_before_stable=1
+LEFT_DOWN=0 LEFT_UP=0
+quartz_left_button_down_after_shutdown=False
+```
+
+The isolated trials therefore emitted zero wrong-button actions in both directions. The index run
+completed ten recognized cycles with no miss among committed attempts. The middle run committed 16
+of 17 recognized candidates, with one short-contact cancellation and no false left click. The
+observed attempt counts exceeded the requested ten in at least the middle run, so these are recorded
+from objective candidate counts rather than assumed manual denominators.
+
+This closes isolated index-versus-middle discrimination but does not yet close the mandatory
+alternating confusion gate. One ordered run must alternate the two gestures without repeating a
+type, allowing the transition sequence itself to verify whether switching introduces wrong-button
+or duplicate actions.
+
+### 2026-07-19 ordered alternating-pinch run
+
+The owner supplied the requested 30-second run after being instructed to alternate thumb-index and
+thumb-middle with a full neutral release and no repeated gesture type. The objective button events
+were balanced and safely released:
+
+```text
+measurement_duration_s=30.03 capture_fps=29.97 callback_hz=29.81
+action_events=LEFT_DOWN:5,LEFT_UP:5,POINTER_MOVE:610,RIGHT_CLICK:3,SCROLL:2
+index pinch_stable=5 pinch_released=5
+middle_pinch_released=3 right_click_neutral=3
+quartz_left_button_down_after_shutdown=False
+```
+
+However, the same pinch-only run produced command-pose confusion:
+
+```text
+fist_clutch=2 clutch_released=2
+two_finger_candidate=11 two_finger_cancelled=9
+two_finger_motion=2 two_finger_released=2
+```
+
+Because neither fist nor scrolling was part of the instructed alternating sequence, both committed
+scroll episodes and both fist clutches are unintended actions. The alternating confusion gate
+therefore remains **FAIL**, even though this run contains no unbalanced button and the later emitted
+button sequence cleanly alternates index/middle.
+
+The transition evidence identifies a gesture-vocabulary boundary collision: intermediate shapes
+while forming or releasing a pinch can satisfy the current two-finger or fist recognizer before
+thumb contact becomes unambiguous. Tightening scroll timing blindly would regress the already-fixed
+small-motion responsiveness, and loosening pinch thresholds would regress wrong-button safety. A
+landmark capture of the exact alternating motion is required to determine which thumb/finger
+geometry separates intentional scroll and fist from pinch transitions.
+
+### 2026-07-19 controlled alternating landmark replay
+
+The owner created local camera-derived
+`tests/fixtures/landmarks/pinch-alternating.jsonl`. It remains untracked and is not approved for
+git. The capture contains 835 records, including 811 valid tracked-hand records.
+
+Production classification found clean separation throughout the performed pinch sequence:
+
+```text
+index-pinch frames=59
+middle-pinch frames=55
+two-finger frames=0
+fist frames during actual pinch sequence=0
+```
+
+One isolated single-frame fist classification occurred at 1.22 seconds during setup, several
+seconds before the first index pinch at 6.18 seconds. It neither met the 100 ms clutch dwell nor
+emitted an action.
+
+Exact-timestamp production FSM replay emitted:
+
+```text
+PINCH_START=5 PINCH_END=5
+RIGHT_CLICK=6
+SCROLL_START/SCROLL_UPDATE=0
+CLUTCH_ON=0
+middle_pinch_cancelled_before_stable=0
+```
+
+The replay contained no wrong-button, scroll, or clutch action during the alternating sequence.
+This disproves an unavoidable vocabulary collision for the controlled hand posture. The earlier
+live false scroll/clutch run used materially different intermediate geometry. A fresh target app
+run must reproduce the controlled capture posture before the alternating gate can be closed.
+
+### 2026-07-19 controlled-posture live retry and hysteresis correction
+
+The owner repeated the controlled alternating posture in a 30-second live app run. It eliminated
+the prior false scroll and clutch actions but exposed a middle-pinch dwell defect:
+
+```text
+measurement_duration_s=30.05 capture_fps=23.13 callback_hz=23.07
+capture_to_quartz_median_ms=19.88 capture_to_quartz_p95_ms=20.55
+action_events=LEFT_DOWN:8,LEFT_UP:8,POINTER_MOVE:518
+index pinch_stable=8 pinch_released=8
+middle_pinch_candidate=3 middle_pinch_cancelled_before_stable=3
+RIGHT_CLICK=0 SCROLL=0 CLUTCH_ON=0
+quartz_left_button_down_after_shutdown=False
+```
+
+Each canceled middle candidate remained pending longer than the configured 100 ms stability dwell:
+approximately 346 ms, 216 ms, and 389 ms. The FSM started the candidate on a fully closed frame but
+only armed it if another fully closed frame arrived after 100 ms. If measurement jitter moved into
+the configured 0.35-0.50 hysteresis dead zone and remained there until release, the pending state
+survived but never armed, producing the contradictory `cancelled_before_stable` result.
+
+Pinch hysteresis now treats the dead zone as continuation of an already-started clear candidate.
+Once a clear closed frame starts the episode, closed or dead-zone time counts toward the 100 ms
+dwell. Explicit open, opposite-finger cross-pinch ambiguity, fist priority, tracking loss, and all
+safety cancellation paths remain unchanged. The same correction is applied consistently to index
+and middle pending states.
+
+Regression evidence:
+
+```text
+before correction:
+test_index_pinch_dead_zone_after_closed_entry_counts_toward_stability FAILED
+test_middle_pinch_dead_zone_after_closed_entry_counts_toward_stability FAILED
+
+after correction:
+focused regressions: 2 passed
+full suite: 83 passed in 5.71s
+ruff format --check: 38 files already formatted
+ruff check: All checks passed
+```
+
+The alternating gate remains open pending a fresh target run of this corrected hysteresis behavior.
+
+### 2026-07-19 corrected-hysteresis alternating target retry
+
+The owner then reran the 30-second live application after the pending-state hysteresis correction,
+following the requested `thumb-index -> open -> thumb-middle -> open` repeating sequence. The target
+terminal reported:
+
+```text
+measurement_duration_s=30.02 capture_fps=23.15 callback_hz=22.82
+submitted=685 callbacks=685 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=507 capture_to_quartz_median_ms=19.91 capture_to_quartz_p95_ms=33.48
+frame_age_at_submission_median_ms=0.65 frame_age_at_submission_p95_ms=1.23
+action_events=LEFT_DOWN:8,LEFT_UP:8,POINTER_MOVE:507,RIGHT_CLICK:3
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+All three detected middle-pinch candidates now survived the hysteresis dead zone and committed on
+release; no `middle_pinch_cancelled_before_stable` transition remained. The run also had no scroll,
+fist-clutch, duplicate-button, unbalanced-button, or stuck-button event. This validates the narrow
+pending-state hysteresis correction on the target Mac.
+
+It does **not** pass the alternating confusion gate. The objective recognized click order was:
+
+```text
+index, index, index, middle, index, index, index, middle, index, middle, index
+```
+
+That is eight left-button cycles and three right clicks rather than a clean alternation. Given the
+owner's stated strict alternating procedure, some intended thumb-middle pinches were still
+recognized as thumb-index pinches. The software-only `reported_false_actions=none` field cannot
+detect a mismatch between intended and recognized button semantics and does not override this
+result. No further threshold or arbitration change is justified from transition logs alone; the
+next diagnostic input must be a landmark capture of the exact failing live sequence so production
+features can be replayed frame by frame. The §4 alternating gate remains **FAIL / open**.
+
+### 2026-07-19 count-controlled alternating landmark capture
+
+The owner recorded the requested local camera-derived diagnostic fixture at
+`tests/fixtures/landmarks/pinch-alternating-failure-v2.jsonl`. It remains **private, unapproved,
+untracked, and excluded from git** unless the owner explicitly approves it. The recording contains
+630 records over 27.65 seconds: 489 valid hand results and 141 no-hand results. The intended portion
+contains exactly five alternating thumb-index/thumb-middle pairs.
+
+Production feature extraction and pose classification found eleven contact episodes. The first ten
+are a clean alternating sequence; the eleventh is a short end-of-run ambiguous/fist-shaped motion
+that never becomes a click candidate. Across the five intended thumb-middle contacts, the minimum
+middle-pinch ratios were `0.319`, `0.333`, `0.335`, `0.337`, and `0.339` against the configured
+`0.350` closed threshold. The opposite index ratios remained clear at `0.722` or greater. Across
+the five intended thumb-index contacts, the minimum index ratios were `0.148` to `0.207`, while the
+opposite middle ratios remained clear at `1.028` or greater. No intended episode entered the
+cross-pinch ambiguity zone.
+
+An exact timestamp replay through the current production feature, pose, and gesture FSM path
+produced:
+
+```text
+PINCH_START=5
+PINCH_END=5
+RIGHT_CLICK=5
+SCROLL=0
+CLUTCH_ON=0
+recognized_order=index,middle,index,middle,index,middle,index,middle,index,middle
+```
+
+Every middle candidate committed on release after 173-260 ms in the pending state. The capture
+therefore validates the corrected hysteresis path and cross-exclusive classification for the
+owner's controlled posture. It does not reproduce the earlier live run's 8-left/3-right mismatch,
+and it would be unjustified to change pinch thresholds from this evidence. Because the fixture
+recorder does not dispatch Quartz events, the §4 live wrong-button gate remains open pending one
+count-controlled target-app run of exactly five pairs using this same posture.
+
+### 2026-07-19 45-second live count check
+
+The owner then ran the target application for 45 seconds. The objective summary was:
+
+```text
+measurement_duration_s=45.03 capture_fps=23.12 callback_hz=22.68
+submitted=1021 callbacks=1021 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=819 capture_to_quartz_median_ms=26.11 capture_to_quartz_p95_ms=36.53
+frame_age_at_submission_median_ms=0.62 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:4,LEFT_UP:4,POINTER_MOVE:819,RIGHT_CLICK:5
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The five detected middle-pinch candidates committed exactly once each. A sixth late middle
+candidate was canceled before stable and correctly emitted no click. No scroll or clutch action
+was dispatched, left-button events were balanced, and shutdown left no button held. The detected
+click order was four index clicks followed by five middle clicks, not five alternating pairs.
+
+The owner's direct observations and procedure were:
+
+```text
+sequence performed: five index then five middle on the physical right hand, then the right hand was
+lowered and the same sequence was performed with only the physical left hand raised
+wrong-button clicks observed: 2
+missed clicks observed: 2
+ambiguous-contact clicks observed: 5
+```
+
+The restored Phase 1 v1.1 perception path is explicitly configured with MediaPipe `num_hands=1`,
+and frozen `PLAN.md` starts Phase 1 with the physical right hand only. The owner clarified that the
+hands were shown sequentially, never simultaneously, so single-slot competition between two visible
+hands did not cause this result. However, the terminal summary and manual error counts aggregate a
+right-hand trial with a separate left-hand trial and do not identify which physical hand produced
+each wrong, missed, or ambiguous action. They therefore cannot establish the required physical
+right-hand confusion rate or justify tuning its thresholds. This combined-hand run is **INVALID for
+§4 acceptance**, not a pass. The required retry must use only the physical right hand and strict
+`index -> open -> middle -> open` alternation.
+
+### 2026-07-19 physical-right-hand-only alternating retry
+
+The owner reran the controller for 45 seconds with the physical left hand excluded and the physical
+right hand performing the requested strict alternating sequence. The objective target summary was:
+
+```text
+measurement_duration_s=45.02 capture_fps=23.10 callback_hz=22.26
+submitted=1002 callbacks=1002 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=339 capture_to_quartz_median_ms=21.76 capture_to_quartz_p95_ms=34.65
+frame_age_at_submission_median_ms=0.65 frame_age_at_submission_p95_ms=1.23
+action_events=LEFT_DOWN:5,LEFT_UP:5,POINTER_MOVE:339,RIGHT_CLICK:2
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+All five index candidates reached stable drag/click state and released cleanly. Only two middle
+pinch candidates were detected, and both committed one right click on release. The objective click
+order was `index,index,middle,index,index,index,middle`, so three intended middle pinches produced
+no button action. No middle attempt was converted into an extra left click: the five balanced left
+cycles exactly match the five intended index attempts. Near the end, a fist-shaped frame invoked
+safe release, tracking was lost, and the controller cleanly reached full hand-loss disengagement.
+No scroll, clutch, duplicate button, unbalanced button, or stuck button was emitted.
+
+This run is **FAIL / open** for the §4 alternating gate because only two of five intended right
+clicks were recognized. It also narrows the defect: the current live failure is missed recognition,
+not wrong-button arbitration or the already-corrected pending-state dwell. The standalone landmark
+capture replayed 5/5, while the live app produced 2/5, so a separate recorder run cannot expose the
+failing geometry. The next investigation step is explicit, privacy-gated landmark recording inside
+the live application run so the exact missed attempts and emitted events share one timeline. No
+threshold change is justified before that evidence exists.
+
+### 2026-07-19 live-run landmark diagnostic instrumentation
+
+To capture the geometry that actually drives a failing Quartz run, the live application now has an
+optional `--record-landmarks PATH` diagnostic. It is disabled by default, requires the same explicit
+`--i-understand-camera-derived-data` acknowledgement as the standalone recorder, refuses to
+overwrite an existing path both before native initialization and atomically when opening the file,
+flushes each accepted result, and prints the final path and record count. Normal controller behavior
+and every gesture threshold remain unchanged.
+
+Regression coverage verifies that an unacknowledged request is rejected and that an acknowledged
+writer round-trips the exact `HandState` JSONL representation while refusing to overwrite an
+existing fixture. Local verification:
+
+```text
+focused app/replay tests: 4 passed in 26.73s
+ruff format --check: 39 files already formatted
+ruff check: All checks passed
+compileall: passed
+host-compatible suite: 84 passed in 38.93s
+full suite: 84 passed, 1 environment failure
+environment failure: test_model_smoke could not create NSOpenGLPixelFormat in the Codex host
+```
+
+The MediaPipe OpenGL smoke limitation is specific to the Codex-hosted process and is unchanged from
+earlier validation. The owner's trusted terminal has already run the model successfully and must
+rerun the now-85-test full suite with this diagnostic diff. The next target capture remains private
+and untracked unless the owner explicitly approves it for git.
+
+### 2026-07-19 exact live-miss replay and threshold correction
+
+The owner ran the physical-right-hand-only live application with the new explicit recorder. The
+private, unapproved `tests/fixtures/landmarks/live-middle-misses-v1.jsonl` contains 928 accepted
+results and remains untracked. The target summary was:
+
+```text
+measurement_duration_s=45.02 capture_fps=22.97 callback_hz=20.63
+submitted=929 callbacks=929 capture_slot_drops=1 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=266 capture_to_quartz_median_ms=30.18 capture_to_quartz_p95_ms=79.35
+frame_age_at_submission_median_ms=0.64 frame_age_at_submission_p95_ms=1.25
+action_events=LEFT_DOWN:5,LEFT_UP:5,POINTER_MOVE:266,RIGHT_CLICK:3
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+landmark_fixture=.../live-middle-misses-v1.jsonl records=928
+```
+
+Exact production replay matches the live transitions and identifies two distinct missed-right-click
+causes:
+
+- One intended middle pinch repeatedly moved the index tip inside the configured cross-pinch clear
+  boundary. Its index ratio reached `0.469-0.498`, below the required `0.500`, while the middle ratio
+  was closed. The FSM canceled three restarted middle candidates with
+  `middle_pinch_cancelled_ambiguous_cross_pinch` and emitted no button action. This is the required
+  fail-closed behavior and must not be weakened.
+- One cross-exclusive middle pinch kept the index ratio at `0.533` or greater but reached a minimum
+  middle ratio of only `0.3518`, narrowly outside the configured `0.3500` closed onset. It therefore
+  produced no candidate despite the correct `11011` extension posture.
+
+A `0.360` closed onset recovers the second clean episode in exact replay, improving this capture
+from 3/5 to 4/5 right clicks while preserving all three ambiguous cancellations and all five index
+clicks. Replaying every available landmark capture shows no change to the approved mixed fixture,
+the two controlled alternating fixtures, index-click counts, or ambiguity cancellations. It also
+detects one previously borderline clear middle-only episode in `thumb-middle-10.jsonl` one frame
+earlier, allowing that episode to satisfy the unchanged 100 ms stability dwell. The open threshold
+remains `0.500`, the cross-pinch clear threshold remains `0.500`, and all dwell/safety behavior is
+unchanged.
+
+The configured closed ratio is now `0.360`. Regression coverage first failed at the observed clean
+`middle=0.3518/index=0.621` frame and passes after the correction. A separate regression freezes the
+observed ambiguous `middle=0.182/index=0.469` frame as neither index nor middle pinch. Local
+verification after the correction:
+
+```text
+ruff format --check: 39 files already formatted
+ruff check: All checks passed
+compileall: passed
+host-compatible suite: 86 passed in 38.68s
+```
+
+Fresh target verification remains required. The complete target suite now contains 87 tests,
+including the MediaPipe model smoke check that cannot run in the Codex-hosted process.
+
+### 2026-07-19 release-order root cause and correction
+
+The owner repeated the physical-right-hand-only alternating sequence with live landmark recording
+after the `0.360` contact-onset correction. The target run produced five balanced index clicks and
+three right clicks:
+
+```text
+measurement_duration_s=45.03 capture_fps=23.03 callback_hz=20.30
+submitted=914 callbacks=914 capture_slot_drops=20 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=278 capture_to_quartz_median_ms=32.87 capture_to_quartz_p95_ms=46.15
+frame_age_at_submission_median_ms=0.66 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:5,LEFT_UP:5,POINTER_MOVE:278,RIGHT_CLICK:3
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+landmark_fixture=.../live-middle-misses-v1.jsonl records=913
+```
+
+Unlike the prior capture, all five intended middle pinches entered `MIDDLE_PINCH_PENDING` and stayed
+there beyond the 100 ms stability dwell. The two missing clicks were canceled only on release. In
+both cases the middle fingertip was fully open (`0.753` and `0.766`), but the index ratio briefly
+passed through the cross-pinch dead zone (`0.496` and `0.440`). There were zero captured frames in
+those episodes where both fingertips were inside the cross-pinch boundary during the closed
+contact.
+
+The root cause was an ordering/meaning defect across pose classification and the middle-pinch FSM:
+
+- `middle_pinch_open` required both the middle tip to be open and the index tip already to be beyond
+  the cross-pinch boundary, hiding a valid release while the index was merely in its dead zone.
+- `MIDDLE_PINCH_PENDING` evaluated cross ambiguity before evaluating release, so an already-armed,
+  cross-exclusive middle pinch could be discarded during its opening trajectory.
+
+The correction defines middle release from the middle fingertip opening itself. The FSM still gives
+a fully closed index pinch first priority and cancels it as a gesture switch; it then commits or
+cancels middle release according to whether the clear middle candidate armed; only an ongoing
+non-open contact is subject to cross-pinch ambiguity cancellation. Genuine both-tip ambiguity
+during contact therefore remains fail-closed.
+
+Both new regressions failed before the correction and pass afterward:
+
+```text
+test_middle_pinch_release_depends_on_middle_tip_opening
+test_armed_middle_pinch_commits_when_release_passes_through_cross_dead_zone
+```
+
+Existing regressions proving that a middle-to-index transition emits no wrong button and that an
+armed middle pinch entering genuine contact-time ambiguity emits nothing also pass. Exact replay of
+the new target capture now produces:
+
+```text
+LEFT/PINCH_START=5
+RIGHT_CLICK=5
+order=LEFT,RIGHT,LEFT,RIGHT,LEFT,RIGHT,LEFT,RIGHT,LEFT,RIGHT
+```
+
+Local verification after the correction:
+
+```text
+ruff format --check: 39 files already formatted
+ruff check: All checks passed
+compileall: passed
+host-compatible suite: 88 passed in 22.99s
+```
+
+Fresh target verification remains required. The complete target suite now contains 89 tests. The
+new live recording remains private, unapproved, and untracked.
+
+### 2026-07-19 seven-cycle target retry after release correction
+
+The owner performed seven cycles in a 45-second right-hand target run after the release-order
+correction. The objective summary was:
+
+```text
+measurement_duration_s=45.01 capture_fps=23.13 callback_hz=23.02
+submitted=1036 callbacks=1036 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=316 capture_to_quartz_median_ms=20.23 capture_to_quartz_p95_ms=24.03
+frame_age_at_submission_median_ms=0.68 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:7,LEFT_UP:7,POINTER_MOVE:316,RIGHT_CLICK:4
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The release-order defect is absent: there are zero
+`middle_pinch_cancelled_ambiguous_cross_pinch` transitions, and every middle candidate that armed
+committed exactly one right click. Three additional middle candidates ended with
+`middle_pinch_cancelled_before_stable`; their pending durations were approximately 87 ms, 43 ms,
+and 89 ms, all below the unchanged 100 ms stability requirement. Two of those short candidates
+occurred immediately after successful right-click cycles and may be release/recontact bounce rather
+than separate intended cycles. Other expected middle attempts produced no candidate in the
+transition log, but this no-recording run does not contain the geometry needed to distinguish a
+near-threshold contact from an unrecognized posture.
+
+The run safely emitted balanced left-button events, no scroll or clutch action, fresh latency, and
+no held button after shutdown. It remains **FAIL / open** for the §4 alternating gate because the
+objective result is 7 left clicks and only 4 right clicks. No dwell or safety threshold is changed
+from this evidence.
+
+The owner's direct observations for the same run were:
+
+```text
+sequence performed: seven alternating thumb-index/thumb-middle pairs
+wrong-button clicks observed: 0
+missed right clicks observed: 1
+ambiguous-contact clicks observed: 0
+```
+
+The zero wrong-button and zero ambiguous-click observations are clean. However, one visually missed
+right click implies six successful right clicks, while the controller objectively emitted only four
+`RIGHT_CLICK` events. That discrepancy cannot be resolved from transition logs alone and prevents a
+pass. The next diagnostic run must record the exact live landmark stream so all seven intended
+middle attempts can be aligned with candidate onset, dwell, release, and Quartz emission.
+
+### 2026-07-19 recorded seven-pair diagnostic
+
+The owner repeated exactly seven alternating right-hand pairs with integrated landmark recording.
+The private, unapproved `live-seven-misses-v2.jsonl` contains 1,038 records and remains untracked.
+The target summary was:
+
+```text
+measurement_duration_s=45.01 capture_fps=23.13 callback_hz=23.06
+submitted=1038 callbacks=1038 capture_slot_drops=0 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+dispatch_samples=502 capture_to_quartz_median_ms=20.14 capture_to_quartz_p95_ms=21.46
+frame_age_at_submission_median_ms=0.62 frame_age_at_submission_p95_ms=1.22
+action_events=LEFT_DOWN:2,LEFT_UP:2,POINTER_MOVE:502,RIGHT_CLICK:6
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+landmark_fixture=.../live-seven-misses-v2.jsonl records=1038
+```
+
+MediaPipe reported the physical right hand for 747 of 748 valid results, with the single outlier not
+forming an action. Hand identity is therefore not the cause. Exact feature analysis shows that most
+intended index approaches did not reach the configured `0.360` contact onset: observed minima were
+commonly `0.378-0.435`, and only two sustained episodes classified and emitted left clicks. Six
+middle episodes emitted right clicks. Several additional short or noisy contact fragments safely
+canceled before their 100 ms dwell; one two-finger candidate also canceled without action.
+
+The 2D image-landmark alternative does not recover the contacts. In this recording, the current 3D
+world-landmark measurement produced 12 index-closed frames and 27 middle-closed frames, whereas the
+2D image measurement at the same normalized threshold produced only two index-closed frames and
+zero middle-closed frames.
+
+Threshold sensitivity replay also rules out another safe scalar adjustment:
+
+```text
+closed=0.360 -> this capture LEFT=2 RIGHT=6
+closed=0.420 -> this capture LEFT=2 RIGHT=7
+closed=0.450 -> this capture LEFT=3 RIGHT=8
+```
+
+Raising the threshold as far as `0.450` still fails to recover four of seven intended index clicks
+and introduces additional right-click emissions in this and the `thumb-middle-10` capture. It would
+trade misses for phantom/duplicate action risk and is therefore rejected. The configured threshold
+remains `0.360`; no code or acceptance criterion is weakened from this run.
+
+The §4 gate remains **FAIL / open**. The remaining unknown is visual: whether the physical
+thumb-index contacts were fully visible to the camera in a front-facing plane even though
+MediaPipe's landmarks kept the tips separated. Resolving that requires synchronized visual evidence
+from the same gesture run, not another unlabeled landmark capture or threshold guess.
+
+### 2026-07-19 three-pair visual-correlation attempt
+
+The owner created the requested private `live-visual-three-v3.jsonl` diagnostic and later supplied
+the synchronized private Desktop screen recording. Neither artifact is approved for git. The
+landmark stream contains 646 records over 29.96 seconds, with 511 valid physical-right-hand results
+and 135 no-hand results. Exact replay through the current corrected FSM produces:
+
+```text
+PINCH_START/LEFT=6
+PINCH_END=6
+RIGHT_CLICK=3
+order=LEFT,RIGHT,LEFT,RIGHT,LEFT,LEFT,LEFT,RIGHT,LEFT
+middle candidates=3; released/committed=3
+```
+
+Frame-ID correlation between the debug overlay and the landmark fixture establishes a video offset
+of approximately 6.83 seconds. The recording visibly contains six thumb-index cycles and five
+thumb-middle approaches, not the requested three alternating pairs. All six index cycles reach
+clear fingertip contact and commit. Three middle approaches also show the thumb-tip and middle-tip
+landmarks overlapping, reach minima `0.319-0.352`, and commit one right click each. The other two
+middle approaches stop at minima `0.380` and `0.404`, above the configured `0.360` contact onset.
+At full resolution, their tracked thumb tips land below or alongside the middle fingertip rather
+than overlapping it. MediaPipe follows the visible tips consistently in those frames; this is not a
+hand-identity, scheduler, release-order, or landmark-placement defect.
+
+This attempt is **INVALID / not an acceptance result** because the performed count and sequence do
+not match the instructed three pairs. It nevertheless resolves the visual unknown from the prior
+recorded run: the remaining non-recognition is caused by incomplete fingertip-to-fingertip contact.
+The prior threshold sweep showed that loosening the scalar threshold introduces extra right-click
+emissions without reliably recovering the intended index sequence, so the configured `0.360`
+threshold and all safety/dwell rules remain unchanged. The next gate attempt must keep the palm
+front-facing, touch the center of the thumb tip directly to the center of the selected fingertip,
+hold for longer than 100 ms, and return to a visibly open hand between gestures. Both raw artifacts
+remain private, unapproved, and untracked.
+
+### 2026-07-19 Phase 1 validation stopped; MVP demo preparation started
+
+The project owner explicitly stopped the remaining Phase 1 validation and moved the work to MVP
+demo preparation. Phase 1 is not marked PASS: the unfinished confusion, application double-click,
+target-acquisition, false-action, and remaining safety/loss checks stay recorded as unverified in
+`PHASE_1_VALIDATION.md`. No raw private diagnostic capture received git approval as part of this
+decision.
+
+For the demo, the camera is now visible during every normal controller run rather than only behind
+`--debug`. The renderer uses a native macOS borderless window that is:
+
+- 280×200 points and inset 20 points from the main display's bottom-left;
+- mirrored for natural self-view, rounded, shadowed, always on top, and available across Spaces;
+- click-through, so it cannot intercept the pointer interactions being demonstrated; and
+- free of diagnostic text in normal mode, while `--debug` adds landmarks/FSM details to the same
+  compact overlay.
+
+The dimensions and presentation values are schema-validated under `preview` in `config.yaml`.
+Local formatting, lint, compilation, and the host-compatible suite pass with 89 tests and one
+official-model smoke test deselected. A bounded native five-second launch opened the camera,
+processed 96 latest-only results, exited with no actions, and reported
+`quartz_left_button_down_after_shutdown=False`.
+
+The requested thumbs-up shortcut is intentionally not active yet because the owner is still
+selecting the exact Whisper Flow key combination. Emitting a guessed shortcut would be unsafe. The
+gesture and Quartz keyboard integration will be implemented once that exact key plus modifiers is
+provided.

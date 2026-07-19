@@ -3,7 +3,7 @@
   "title": "Aang-Airbender Phase 1 configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["config_version", "perception", "features", "pinch", "poses", "timing", "control", "gestures", "debug"],
+  "required": ["config_version", "perception", "features", "pinch", "poses", "timing", "control", "gestures", "preview", "debug"],
   "properties": {
     "config_version": {"const": 1},
     "perception": {
@@ -90,6 +90,18 @@
       "properties": {
         "right_click_candidate": {"enum": ["two_finger_dwell", "middle_pinch"]},
         "enable_two_finger_dwell_right_click_fallback": {"type": "boolean"}
+      }
+    },
+    "preview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "margin", "corner_radius", "mirror", "render_every_n_frames"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 160, "maximum": 960},
+        "height": {"type": "integer", "minimum": 120, "maximum": 720},
+        "margin": {"type": "integer", "minimum": 0},
+        "corner_radius": {"type": "number", "minimum": 0},
+        "mirror": {"type": "boolean"},
+        "render_every_n_frames": {"type": "integer", "minimum": 1}
       }
     },
     "debug": {

@@ -68,16 +68,23 @@ validated configuration; invalid and unknown values fail closed. The default box
 camera width and 54% of its height, giving approximately 20% more horizontal response and 18.5%
 more vertical response than the initial Phase 1 values.
 
-For a bounded run or opt-in debug preview:
+The camera preview is always visible while the controller is running. It appears as a mirrored,
+borderless, click-through 280×200 overlay at the bottom-left of the main display. Its dimensions,
+margin, corner radius, mirroring, and render cadence are configured under `preview` in
+`config.yaml`.
+
+For a bounded run or a preview with diagnostic annotations:
 
 ```bash
 uv run python -m aang_airbender.app --duration-seconds 30
 uv run python -m aang_airbender.app --duration-seconds 30 --debug
 ```
 
-Debug rendering is off by default. Shutdown prints software pipeline timing, emitted action counts,
-reported false-action counts, and the objective combined-session Quartz left-button state. Software
-timing excludes camera sensor delay and display composition; it is not motion-to-visible latency.
+The normal overlay contains only the camera image. `--debug` adds landmarks, recognized poses, FSM
+state, and callback latency to that same compact overlay. Shutdown prints software pipeline timing,
+emitted action counts, reported false-action counts, and the objective combined-session Quartz
+left-button state. Software timing excludes camera sensor delay and display composition; it is not
+motion-to-visible latency.
 
 ## Validate without camera access
 

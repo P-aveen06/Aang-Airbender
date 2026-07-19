@@ -1,5 +1,9 @@
 # Aang-Airbender Phase 1 target-Mac validation
 
+> **Stopped by project owner on 2026-07-19.** This checklist is retained as historical evidence but
+> was not completed and does not approve Phase 1. Subsequent MVP-demo work, including the always-on
+> camera overlay and planned thumbs-up shortcut, is outside this unfinished validation result.
+
 This worksheet preserves the frozen Phase 1 acceptance criteria from `PLAN.md`. Do not mark an item
 verified unless the exact check was run in an Accessibility-trusted terminal on the target Mac.
 
@@ -53,20 +57,21 @@ uv run python -m aang_airbender.app --duration-seconds 300
 
 During the five-minute session, do not touch the trackpad after engagement:
 
-- [ ] Hold a facing open palm for the configured dwell and engage.
-- [ ] Move the pointer using palm motion; confirm the anchor feels independent of fingertip motion.
-- [ ] Browse and open an application using thumb-index pinch-and-release clicks.
-- [ ] Hold a thumb-index pinch to drag a disposable file or safe test object, then confirm release.
-- [ ] Emit exactly one right click by closing and releasing a thumb-middle pinch, then returning to
+- [x] Hold a facing open palm for the configured dwell and engage.
+- [x] Move the pointer using palm motion; confirm the anchor feels independent of fingertip motion.
+- [x] Browse and open an application using thumb-index pinch-and-release clicks.
+- [x] Hold a thumb-index pinch to drag a disposable file or safe test object, then confirm release.
+- [x] Emit exactly one right click by closing and releasing a thumb-middle pinch, then returning to
       neutral.
-- [ ] Scroll a page using two fingers plus vertical motion.
-- [ ] Hold two fingers still and confirm no pointer, click, or scroll event occurs.
-- [ ] Confirm fist releases any active drag before clutching/freezing the pointer, and does not
+- [x] Scroll a page using two fingers plus vertical motion; after the continuity correction, small
+      movements respond continuously and intentional release causes no phantom movement.
+- [x] Hold two fingers still and confirm no pointer, click, or scroll event occurs.
+- [x] Confirm fist releases any active drag before clutching/freezing the pointer, and does not
       disengage even when held longer than one second.
-- [ ] Confirm fist release re-baselines the pointer without a jump.
-- [ ] Hold thumbs-down for the configured one-second dwell and confirm disengagement.
-- [ ] Confirm cursor travel is sufficient without feeling excessively sensitive.
-- [ ] Record timing summary, action counters, failures, and observations in `PROGRESS.md`.
+- [x] Confirm fist release re-baselines the pointer without a jump.
+- [x] Hold thumbs-down for the configured one-second dwell and confirm disengagement.
+- [x] Confirm cursor travel is sufficient without feeling excessively sensitive.
+- [x] Record timing summary, action counters, failures, and observations in `PROGRESS.md`.
 
 ## 4. Required confusion gates
 
@@ -74,9 +79,9 @@ Run these deliberately before calling the vocabulary v1:
 
 - [ ] Alternate thumb-index and thumb-middle pinches; record any wrong-button click. The ambiguous
       cross-pinch zone must emit nothing.
-- [ ] Form a fist slowly and quickly; confirm no left or right click occurs while fingers curl.
-- [ ] Alternate fist and thumbs-down; confirm fist never disengages and thumbs-down never clutches.
-- [ ] Drop the hand naturally out of frame; confirm this follows hand-loss grace/full-timeout paths,
+- [x] Form a fist slowly and quickly; confirm no left or right click occurs while fingers curl.
+- [x] Alternate fist and thumbs-down; confirm fist never disengages and thumbs-down never clutches.
+- [x] Drop the hand naturally out of frame; confirm this follows hand-loss grace/full-timeout paths,
       never the explicit thumbs-down path.
 - [ ] In Finder and at least one browser, perform two complete thumb-index pinch cycles at normal
       double-click cadence and confirm the target application interprets them as a double-click.
@@ -128,8 +133,12 @@ Do not average the two sessions or reinterpret the thresholds.
 
 ## Acceptance status
 
-`PASS / FAIL / PARTIALLY VERIFIED`
+`STOPPED / INCOMPLETE — owner moved to MVP demo preparation before the remaining gates`
 
 Unresolved or unverified items:
 
--
+- Alternating thumb-index/thumb-middle confusion gate
+- Finder and browser application-level double-click checks
+- Twenty-target acquisition test
+- Ten-minute and thirty-minute false-action sessions
+- Remaining manual safety/loss-path matrix

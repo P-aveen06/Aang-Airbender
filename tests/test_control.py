@@ -33,14 +33,31 @@ def test_point_is_filtered_mirrored_and_expanded_by_control_box() -> None:
     assert events[0].y == pytest.approx(0.0)
 
 
-def test_clutch_freezes_pointer_and_release_resets_filter() -> None:
+def test_clutch_freezes_pointer_and_release_rebaselines_without_jump() -> None:
     control = ControlEngine(load_config(), DisplayBounds(0, 0, 1000, 500))
+    before = control.consume(GestureIntent(IntentKind.POINT, 1, point=Point2(0.5, 0.5)))[0]
     control.consume(GestureIntent(IntentKind.CLUTCH_ON, 1))
 
-    assert not control.consume(GestureIntent(IntentKind.POINT, 2, point=Point2(0.5, 0.5)))
+    assert not control.consume(GestureIntent(IntentKind.POINT, 2, point=Point2(0.7, 0.7)))
 
     control.consume(GestureIntent(IntentKind.CLUTCH_OFF, 3))
-    assert control.consume(GestureIntent(IntentKind.POINT, 4, point=Point2(0.5, 0.5)))
+    rebaselined = control.consume(GestureIntent(IntentKind.POINT, 4, point=Point2(0.7, 0.7)))[0]
+
+    assert (rebaselined.x, rebaselined.y) == pytest.approx((before.x, before.y))
+
+    moved = control.consume(GestureIntent(IntentKind.POINT, 5, point=Point2(0.65, 0.65)))[0]
+    assert moved.x > rebaselined.x
+    assert moved.y < rebaselined.y
+
+
+def test_safety_cancel_reacquires_from_the_last_cursor_position() -> None:
+    control = ControlEngine(load_config(), DisplayBounds(0, 0, 1000, 500))
+    before = control.consume(GestureIntent(IntentKind.POINT, 1, point=Point2(0.5, 0.5)))[0]
+
+    control.consume(GestureIntent(IntentKind.CANCEL, 2, reason="tracking_loss"))
+    reacquired = control.consume(GestureIntent(IntentKind.POINT, 3, point=Point2(0.7, 0.7)))[0]
+
+    assert (reacquired.x, reacquired.y) == pytest.approx((before.x, before.y))
 
 
 def test_pixel_scroll_has_configured_natural_direction_and_no_momentum() -> None:
@@ -66,3 +83,24 @@ def test_pixel_scroll_has_configured_natural_direction_and_no_momentum() -> None
             velocity=Point2(0.1, 0.2),
         )
     )
+
+
+def test_fractional_pixel_scroll_accumulates_instead_of_emitting_rounded_zeroes() -> None:
+    config = load_config()
+    control = ControlEngine(config, DisplayBounds(0, 0, 1000, 500))
+    control.consume(GestureIntent(IntentKind.SCROLL_START, 1_000_000_000))
+    velocity_for_point_two_pixels = 0.2 / (float(config.section("control")["scroll_gain"]) * 0.1)
+
+    events = []
+    for step in range(1, 7):
+        events.extend(
+            control.consume(
+                GestureIntent(
+                    IntentKind.SCROLL_UPDATE,
+                    1_000_000_000 + step * 100_000_000,
+                    velocity=Point2(0.0, velocity_for_point_two_pixels),
+                )
+            )
+        )
+
+    assert [event.pixel_dy for event in events] == [1.0]

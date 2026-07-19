@@ -59,6 +59,7 @@ class GestureEngine:
         self._candidate_since_ns: int | None = None
         self._middle_pinch_armed = False
         self._two_finger_origin: Point2 | None = None
+        self._scroll_pose_lost_since_ns: int | None = None
 
     def _duration_ns(self, section: str, key: str) -> int:
         return int(self.config.section(section)[key]) * 1_000_000
@@ -110,6 +111,7 @@ class GestureEngine:
         self._candidate_since_ns = None
         self._middle_pinch_armed = False
         self._two_finger_origin = None
+        self._scroll_pose_lost_since_ns = None
         return intents
 
     def fault(self, now_ns: int, reason: str) -> list[GestureIntent]:
@@ -226,6 +228,12 @@ class GestureEngine:
             return False
         return now_ns - self._candidate_since_ns >= self._duration_ns("timing", duration_key)
 
+    def _cross_pinch_is_clear(self, features: HandFeatures, pinch_kind: str) -> bool:
+        threshold = float(self.config.section("pinch")["cross_pinch_open_ratio"])
+        if pinch_kind == "index":
+            return features.pinch_ratio_middle > threshold
+        return features.pinch_ratio_index > threshold
+
     def _update_gesture(
         self,
         features: HandFeatures,
@@ -262,9 +270,28 @@ class GestureEngine:
 
         if self.gesture is GestureState.SCROLLING:
             if not pose.two_finger:
+                if self._scroll_pose_lost_since_ns is None:
+                    self._scroll_pose_lost_since_ns = now_ns
+                    return []
+                if now_ns - self._scroll_pose_lost_since_ns < self._duration_ns(
+                    "timing", "pose_stability_ms"
+                ):
+                    return []
                 self._transition_gesture(GestureState.NEUTRAL, now_ns, "two_finger_released")
                 self._two_finger_origin = None
+                self._scroll_pose_lost_since_ns = None
                 return [GestureIntent(IntentKind.SCROLL_END, now_ns)]
+            if self._scroll_pose_lost_since_ns is not None:
+                self._scroll_pose_lost_since_ns = None
+                return [
+                    GestureIntent(IntentKind.SCROLL_START, now_ns, point=features.palm_center),
+                    GestureIntent(
+                        IntentKind.SCROLL_UPDATE,
+                        now_ns,
+                        point=features.palm_center,
+                        velocity=features.palm_velocity,
+                    ),
+                ]
             return [
                 GestureIntent(
                     IntentKind.SCROLL_UPDATE,
@@ -286,11 +313,19 @@ class GestureEngine:
             return []
 
         if self.gesture is GestureState.PINCH_PENDING:
+            if not self._cross_pinch_is_clear(features, "index"):
+                self._transition_gesture(
+                    GestureState.NEUTRAL,
+                    now_ns,
+                    "index_pinch_cancelled_ambiguous_cross_pinch",
+                )
+                self._candidate_since_ns = None
+                return []
             if pose.index_pinch_open:
                 self._transition_gesture(GestureState.NEUTRAL, now_ns, "pinch_cancelled")
                 self._candidate_since_ns = None
                 return []
-            if pose.index_pinch_closed and self._stable_for(now_ns):
+            if self._stable_for(now_ns):
                 self._transition_gesture(GestureState.DRAGGING, now_ns, "pinch_stable")
                 self._candidate_since_ns = None
                 return [GestureIntent(IntentKind.PINCH_START, now_ns, pinch_kind="index")]
@@ -299,14 +334,12 @@ class GestureEngine:
         if self.gesture is GestureState.MIDDLE_PINCH_PENDING:
             if pose.index_pinch_closed:
                 self._transition_gesture(
-                    GestureState.NEUTRAL, now_ns, "middle_pinch_cancelled_by_index_pinch"
+                    GestureState.NEUTRAL,
+                    now_ns,
+                    "middle_pinch_cancelled_by_index_pinch",
                 )
                 self._candidate_since_ns = None
                 self._middle_pinch_armed = False
-                return []
-            if pose.middle_pinch_closed:
-                if self._stable_for(now_ns):
-                    self._middle_pinch_armed = True
                 return []
             if pose.middle_pinch_open:
                 armed = self._middle_pinch_armed
@@ -322,6 +355,18 @@ class GestureEngine:
                 self._transition_gesture(
                     GestureState.NEUTRAL, now_ns, "middle_pinch_cancelled_before_stable"
                 )
+                return []
+            if not self._cross_pinch_is_clear(features, "middle"):
+                self._transition_gesture(
+                    GestureState.NEUTRAL,
+                    now_ns,
+                    "middle_pinch_cancelled_ambiguous_cross_pinch",
+                )
+                self._candidate_since_ns = None
+                self._middle_pinch_armed = False
+                return []
+            if self._stable_for(now_ns):
+                self._middle_pinch_armed = True
             return []
 
         if self.gesture is GestureState.TWO_FINGER_PENDING:
@@ -344,6 +389,7 @@ class GestureEngine:
         if pose.two_finger:
             self._candidate_since_ns = now_ns
             self._two_finger_origin = features.palm_center
+            self._scroll_pose_lost_since_ns = None
             self._transition_gesture(
                 GestureState.TWO_FINGER_PENDING, now_ns, "two_finger_candidate"
             )
@@ -386,6 +432,7 @@ class GestureEngine:
         if displacement >= float(
             control["two_finger_scroll_displacement_ratio"]
         ) or velocity >= float(control["two_finger_scroll_velocity_ratio_per_second"]):
+            self._scroll_pose_lost_since_ns = None
             self._transition_gesture(GestureState.SCROLLING, now_ns, "two_finger_motion")
             return [
                 GestureIntent(IntentKind.SCROLL_START, now_ns, point=features.palm_center),

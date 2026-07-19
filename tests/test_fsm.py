@@ -103,6 +103,23 @@ def test_stable_index_pinch_emits_down_then_hysteretic_release_emits_up() -> Non
     assert [item.kind for item in end] == [IntentKind.PINCH_END]
 
 
+def test_index_pinch_dead_zone_after_closed_entry_counts_toward_stability() -> None:
+    engine, now = engaged_engine()
+    closed = pose(index_pinch_closed=True, index_pinch_open=False)
+    dead_zone = pose(
+        pointer_active=False,
+        index_pinch_closed=False,
+        index_pinch_open=False,
+    )
+
+    assert not engine.update(feature(now + MS), closed, now + MS)
+    assert not engine.update(feature(now + 50 * MS), dead_zone, now + 50 * MS)
+    started = engine.update(feature(now + 101 * MS), dead_zone, now + 101 * MS)
+
+    assert [item.kind for item in started] == [IntentKind.PINCH_START]
+    assert engine.gesture is GestureState.DRAGGING
+
+
 def test_tracking_loss_during_drag_releases_at_grace_and_disengages_later() -> None:
     engine, now = engaged_engine()
     closed = pose(index_pinch_closed=True, index_pinch_open=False)
@@ -120,7 +137,7 @@ def test_tracking_loss_during_drag_releases_at_grace_and_disengages_later() -> N
     assert engine.engagement is EngagementState.DISENGAGED
 
 
-def test_two_finger_motion_locks_to_scroll_until_pose_breaks() -> None:
+def test_two_finger_motion_locks_to_scroll_until_pose_break_is_stable() -> None:
     engine, now = engaged_engine()
     two = pose(two_finger=True)
     engine.update(feature(now + MS), two, now + MS)
@@ -131,8 +148,42 @@ def test_two_finger_motion_locks_to_scroll_until_pose_breaks() -> None:
     assert engine.gesture is GestureState.SCROLLING
     update = engine.update(feature(now + 800 * MS, y=0.52, vy=0), two, now + 800 * MS)
     assert [item.kind for item in update] == [IntentKind.SCROLL_UPDATE]
-    end = engine.update(feature(now + 810 * MS), pose(), now + 810 * MS)
+    assert not engine.update(feature(now + 810 * MS), pose(), now + 810 * MS)
+    assert engine.gesture is GestureState.SCROLLING
+    end = engine.update(feature(now + 911 * MS), pose(), now + 911 * MS)
     assert [item.kind for item in end] == [IntentKind.SCROLL_END]
+
+
+def test_scrolling_recovers_from_short_pose_dropout_with_a_fresh_scroll_baseline() -> None:
+    engine, now = engaged_engine()
+    two = pose(two_finger=True)
+    engine.update(feature(now + MS), two, now + MS)
+    engine.update(feature(now + 101 * MS, y=0.51, vy=0.5), two, now + 101 * MS)
+
+    assert not engine.update(feature(now + 150 * MS), pose(), now + 150 * MS)
+    recovered = engine.update(feature(now + 200 * MS, y=0.52, vy=0.1), two, now + 200 * MS)
+
+    assert [item.kind for item in recovered] == [
+        IntentKind.SCROLL_START,
+        IntentKind.SCROLL_UPDATE,
+    ]
+    assert engine.gesture is GestureState.SCROLLING
+
+
+def test_fist_cancels_scrolling_immediately_without_pose_dropout_grace() -> None:
+    engine, now = engaged_engine()
+    two = pose(two_finger=True)
+    engine.update(feature(now + MS), two, now + MS)
+    engine.update(feature(now + 101 * MS, y=0.51, vy=0.5), two, now + 101 * MS)
+
+    cancelled = engine.update(
+        feature(now + 110 * MS),
+        pose(pointer_active=False, fist=True, index_pinch_open=False),
+        now + 110 * MS,
+    )
+
+    assert [item.kind for item in cancelled] == [IntentKind.SCROLL_END, IntentKind.CANCEL]
+    assert engine.gesture is GestureState.NEUTRAL
 
 
 def test_stationary_two_finger_does_nothing_by_default() -> None:
@@ -181,6 +232,28 @@ def test_middle_pinch_right_clicks_once_on_release_then_requires_neutral() -> No
     assert engine.gesture is GestureState.NEUTRAL
 
 
+def test_middle_pinch_dead_zone_after_closed_entry_counts_toward_stability() -> None:
+    engine, now = engaged_engine()
+    closed = pose(
+        pointer_active=False,
+        middle_pinch_closed=True,
+        middle_pinch_open=False,
+    )
+    dead_zone = pose(
+        pointer_active=False,
+        middle_pinch_closed=False,
+        middle_pinch_open=False,
+    )
+
+    assert not engine.update(feature(now + MS), closed, now + MS)
+    assert not engine.update(feature(now + 50 * MS), dead_zone, now + 50 * MS)
+    assert not engine.update(feature(now + 101 * MS), dead_zone, now + 101 * MS)
+    released = engine.update(feature(now + 120 * MS), pose(), now + 120 * MS)
+
+    assert [item.kind for item in released] == [IntentKind.RIGHT_CLICK]
+    assert engine.gesture is GestureState.RIGHT_CLICK_COMMITTED
+
+
 def test_middle_pinch_transition_to_index_pinch_emits_no_wrong_button() -> None:
     engine, now = engaged_engine()
     middle = pose(
@@ -202,6 +275,114 @@ def test_middle_pinch_transition_to_index_pinch_emits_no_wrong_button() -> None:
     assert not engine.update(feature(now + 111 * MS), index, now + 111 * MS)
     left = engine.update(feature(now + 211 * MS), index, now + 211 * MS)
     assert [item.kind for item in left] == [IntentKind.PINCH_START]
+
+
+def test_armed_middle_pinch_commits_when_release_passes_through_cross_dead_zone() -> None:
+    engine, now = engaged_engine()
+    middle = pose(
+        pointer_active=False,
+        middle_pinch_closed=True,
+        middle_pinch_open=False,
+    )
+    engine.update(
+        replace(feature(now + MS), pinch_ratio_index=0.677, pinch_ratio_middle=0.323),
+        middle,
+        now + MS,
+    )
+    engine.update(
+        replace(feature(now + 101 * MS), pinch_ratio_index=0.677, pinch_ratio_middle=0.323),
+        middle,
+        now + 101 * MS,
+    )
+
+    released = pose(
+        pointer_active=False,
+        index_pinch_open=False,
+        middle_pinch_open=True,
+    )
+    click = engine.update(
+        replace(feature(now + 120 * MS), pinch_ratio_index=0.440, pinch_ratio_middle=0.766),
+        released,
+        now + 120 * MS,
+    )
+
+    assert [item.kind for item in click] == [IntentKind.RIGHT_CLICK]
+    assert engine.gesture is GestureState.RIGHT_CLICK_COMMITTED
+
+
+def test_armed_middle_pinch_crossing_ambiguous_zone_emits_no_click() -> None:
+    engine, now = engaged_engine()
+    middle = pose(
+        pointer_active=False,
+        middle_pinch_closed=True,
+        middle_pinch_open=False,
+    )
+    engine.update(
+        replace(feature(now + MS), pinch_ratio_index=0.8, pinch_ratio_middle=0.3),
+        middle,
+        now + MS,
+    )
+    engine.update(
+        replace(feature(now + 101 * MS), pinch_ratio_index=0.8, pinch_ratio_middle=0.3),
+        middle,
+        now + 101 * MS,
+    )
+
+    ambiguous = pose(
+        pointer_active=False,
+        index_pinch_open=False,
+        middle_pinch_open=False,
+    )
+    assert not engine.update(
+        replace(feature(now + 110 * MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.3),
+        ambiguous,
+        now + 110 * MS,
+    )
+    released = engine.update(feature(now + 120 * MS), pose(), now + 120 * MS)
+    assert [item.kind for item in released] == [IntentKind.POINT]
+    assert engine.gesture is GestureState.POINTING
+
+
+def test_ambiguous_cross_pinch_restarts_index_stability_dwell() -> None:
+    engine, now = engaged_engine()
+    index = pose(
+        pointer_active=False,
+        index_pinch_closed=True,
+        index_pinch_open=False,
+    )
+    engine.update(
+        replace(feature(now + MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.8),
+        index,
+        now + MS,
+    )
+
+    ambiguous = pose(
+        pointer_active=False,
+        index_pinch_open=False,
+        middle_pinch_open=False,
+    )
+    assert not engine.update(
+        replace(feature(now + 50 * MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.3),
+        ambiguous,
+        now + 50 * MS,
+    )
+
+    assert not engine.update(
+        replace(feature(now + 110 * MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.8),
+        index,
+        now + 110 * MS,
+    )
+    assert not engine.update(
+        replace(feature(now + 209 * MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.8),
+        index,
+        now + 209 * MS,
+    )
+    started = engine.update(
+        replace(feature(now + 210 * MS), pinch_ratio_index=0.3, pinch_ratio_middle=0.8),
+        index,
+        now + 210 * MS,
+    )
+    assert [item.kind for item in started] == [IntentKind.PINCH_START]
 
 
 def test_fist_clutches_without_disengaging_and_release_sets_fresh_state() -> None:

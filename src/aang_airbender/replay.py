@@ -3,11 +3,38 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .types import HandState, Point3
 
 LANDMARK_FIXTURE_SCHEMA_VERSION = 1
+
+
+class LandmarkFixtureWriter:
+    """Write an explicitly authorized landmark stream without overwriting existing data."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path.resolve()
+        self.records = 0
+        self._destination: TextIO | None = None
+
+    def __enter__(self) -> LandmarkFixtureWriter:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._destination = self.path.open("x", encoding="utf-8")
+        return self
+
+    def write(self, hand: HandState) -> None:
+        if self._destination is None:
+            raise RuntimeError("Landmark fixture writer is not open")
+        self._destination.write(json.dumps(hand_state_to_record(hand), separators=(",", ":")))
+        self._destination.write("\n")
+        self._destination.flush()
+        self.records += 1
+
+    def __exit__(self, _error_type: object, _error: object, _traceback: object) -> None:
+        if self._destination is not None:
+            self._destination.close()
+            self._destination = None
 
 
 def hand_state_to_record(hand: HandState) -> dict[str, Any]:
