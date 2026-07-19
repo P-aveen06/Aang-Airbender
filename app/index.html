@@ -113,10 +113,7 @@ pre .c{color:var(--green-dark)}
 .roadmap li::before{content:"→";font-family:var(--sans);color:var(--green-dark);font-size:15px}
 
 /* Demo */
-.video-frame{margin-top:52px;aspect-ratio:16/9;border:1px solid var(--rule);border-radius:12px;background:#141412;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.video-frame .play{width:76px;height:76px;border-radius:50%;border:1px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;color:#fff}
-.video-frame .vlabel{position:absolute;left:24px;bottom:20px;color:rgba(255,255,255,.75);font-size:14px}
-.video-frame .overlay-chip{position:absolute;left:24px;top:20px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.45)}
+.video-embed{margin-top:52px;width:100%;aspect-ratio:16/9;border:1px solid var(--rule);border-radius:12px;background:#141412;display:block;overflow:hidden}
 .caption{margin-top:16px;font-size:14px;color:var(--faint);max-width:64ch}
 .final-ctas{margin-top:48px;display:flex;gap:36px;flex-wrap:wrap}
 .final-ctas a{font-family:var(--serif);font-size:21px;color:var(--ink);border-bottom:1px solid var(--ink)}
@@ -309,24 +306,15 @@ uv sync --frozen</code></pre>
     <span class="sect-num">07 · Demo</span>
     <h2>Now watch the interface disappear.</h2>
     <p class="lede">One camera. One hand. One Mac. See the palm move the cursor, pinches become clicks, two fingers scroll, and the fist pause everything long enough to reposition.</p>
-    <!--
-      When the approved public demo video is ready, replace the .video-frame div below with:
-
-      <video controls preload="metadata" playsinline
-             poster="demo-poster.jpg"
-             style="width:100%;aspect-ratio:16/9;border-radius:12px;border:1px solid #E4E1DA;background:#141412"
-             aria-label="Aang-Airbender MVP demo">
-        <source src="aang-airbender-demo.mp4" type="video/mp4">
-        <track kind="captions" src="aang-airbender-demo.vtt" srclang="en" label="English" default>
-      </video>
-
-      Do not autoplay with sound. Captions track is required.
-    -->
-    <div class="video-frame" role="img" aria-label="Placeholder for the Aang-Airbender MVP demo video">
-      <span class="overlay-chip">Demo video — coming soon</span>
-      <span class="play" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      <span class="vlabel">Aang-Airbender MVP demo</span>
-    </div>
+    <iframe
+      class="video-embed"
+      src="https://www.youtube-nocookie.com/embed/etVqmXGq3LE?rel=0"
+      title="Aang-Airbender — Control Your Mac With Hand Gestures | Demo Video"
+      loading="lazy"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      referrerpolicy="strict-origin-when-cross-origin"
+      allowfullscreen>
+    </iframe>
     <p class="caption">Recorded on the target M2 MacBook Air. The bottom-left camera overlay shows the hand pose driving each visible macOS action.</p>
     <div class="final-ctas">
       <a href="https://github.com/P-aveen06/Aang-Airbender" target="_blank" rel="noopener">View the source on GitHub</a>
