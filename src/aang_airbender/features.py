@@ -150,6 +150,11 @@ def extract_features(
         )
     wrist = hand.image_landmarks[0]
     middle = hand.image_landmarks[9]
+    # MediaPipe exposes handedness-classification confidence here, not a per-result
+    # tracking-confidence score. Phase 1 uses it as the feature-validity proxy while the
+    # configured detection, presence, and tracking confidence floors remain enforced by
+    # HandLandmarker itself.
+    feature_confidence = hand.handedness_score
     return HandFeatures(
         palm_center=center,
         palm_orientation_radians=math.atan2(wrist.y - middle.y, wrist.x - middle.x),
@@ -164,6 +169,6 @@ def extract_features(
         thumb_direction_down_ratio=(image_thumb_tip.y - image_thumb_mcp.y) / image_scale,
         palm_velocity=velocity,
         anchor_velocity=velocity,
-        confidence=hand.handedness_score,
+        confidence=feature_confidence,
         timestamp_ns=hand.capture_timestamp_ns,
     )

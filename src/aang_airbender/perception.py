@@ -78,6 +78,8 @@ class LiveHandLandmarker:
         self.latest = LatestValueSlot[HandState]()
         self._timestamps = StrictlyIncreasingMilliseconds()
         self._ledger = BoundedSubmissionLedger()
+        self._submission_lock = Lock()
+        self._submission_in_flight = False
         self._metrics = metrics
         perception = config.section("perception")
         options = mp.tasks.vision.HandLandmarkerOptions(
@@ -94,30 +96,50 @@ class LiveHandLandmarker:
         )
         self._landmarker = mp.tasks.vision.HandLandmarker.create_from_options(options)
 
-    def submit(self, frame: CapturedFrame) -> None:
-        timestamp_ms = self._timestamps.from_monotonic_ns(frame.captured_at_ns)
-        submitted_at_ns = time.monotonic_ns()
-        metadata = SubmissionMetadata(
-            frame.frame_id,
-            frame.captured_at_ns,
-            submitted_at_ns,
-            timestamp_ms,
-        )
-        self._ledger.record(metadata)
-        rgb = cv2.cvtColor(frame.image_bgr, cv2.COLOR_BGR2RGB)
-        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        if self._metrics is not None:
-            self._metrics.record_submission(frame.captured_at_ns, submitted_at_ns)
+    def submit(self, frame: CapturedFrame) -> bool:
+        with self._submission_lock:
+            if self._submission_in_flight:
+                return False
+            self._submission_in_flight = True
+        timestamp_ms: int | None = None
         try:
+            timestamp_ms = self._timestamps.from_monotonic_ns(frame.captured_at_ns)
+            submitted_at_ns = time.monotonic_ns()
+            metadata = SubmissionMetadata(
+                frame.frame_id,
+                frame.captured_at_ns,
+                submitted_at_ns,
+                timestamp_ms,
+            )
+            self._ledger.record(metadata)
+            rgb = cv2.cvtColor(frame.image_bgr, cv2.COLOR_BGR2RGB)
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+            if self._metrics is not None:
+                self._metrics.record_submission(frame.captured_at_ns, submitted_at_ns)
             self._landmarker.detect_async(image, timestamp_ms)
         except Exception:
-            self._ledger.discard(timestamp_ms)
+            if timestamp_ms is not None:
+                self._ledger.discard(timestamp_ms)
+            with self._submission_lock:
+                self._submission_in_flight = False
             raise
+        return True
 
     def _callback(
         self,
         result: mp.tasks.vision.HandLandmarkerResult,
         _output_image: mp.Image,
+        timestamp_ms: int,
+    ) -> None:
+        try:
+            self._publish_result(result, timestamp_ms)
+        finally:
+            with self._submission_lock:
+                self._submission_in_flight = False
+
+    def _publish_result(
+        self,
+        result: mp.tasks.vision.HandLandmarkerResult,
         timestamp_ms: int,
     ) -> None:
         callback_at_ns = time.monotonic_ns()

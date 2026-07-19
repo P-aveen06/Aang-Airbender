@@ -406,12 +406,12 @@ Do not add the full gesture vocabulary, calibration, HUD, acceleration curves, c
 - [ ] Add fixture-based unit tests for geometry and pose classification.
 - [ ] Implement the top-level engagement FSM and inner gesture FSM with timestamp-based transitions.
 - [ ] Implement left-pinch hysteresis and cross-pinch exclusion.
-- [ ] Implement `TWO_FINGER_PENDING` arbitration and keep both right-click candidates behind configuration until confusion tests select one.
+- [ ] Implement `TWO_FINGER_PENDING` arbitration for motion-gated scrolling; keep the stationary two-finger right-click fallback disabled by default.
 - [ ] Add One Euro filtering to the palm centroid; start with `min_cutoff=1.0`, `beta=0.007`, then tune empirically.
 - [ ] Implement absolute mapping from a configurable central control box to the active display region.
 - [ ] Define mirroring and handedness behavior in one module and test it.
 - [ ] Emit real left-button down and up events; implement safe drag release.
-- [ ] Implement right-click once, using the safer validated candidate.
+- [ ] Implement right-click once on cross-exclusive thumb–middle pinch release, then require neutral.
 - [ ] Implement pixel scroll without momentum initially.
 - [ ] Implement clutch and fresh-baseline behavior; fist has no disengagement meaning in v1.
 - [ ] Implement `safe_release_all()` and call it from all terminal and error paths.

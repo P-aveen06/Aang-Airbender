@@ -247,6 +247,13 @@ merged commit before beginning Phase 1.
 **Frozen scope and acceptance source:** `PLAN.md`, Phase 1 — Core five and safety
 **Validator contract:** `CLAUDE.md`
 
+### Phase 1 review-loop history
+
+| Round | Commit SHA | Claude verdict | Blocking findings | Codex response | Resolved |
+|---|---|---|---|---|---|
+| 1 | `7466131` | `REQUEST CHANGES` | Phase 1 target-Mac acceptance evidence absent | Kept the PR draft; continued owner-led live validation | No |
+| 2 | `cb2b238` | `REQUEST CHANGES` | Acceptance evidence incomplete; PR metadata described reverted v1.2 | Restored v1.1, documented the excursion, aligned the approved checklist, and prepared the measured latency correction | Pending round 3 |
+
 ### Phase 1 startup commands
 
 ```bash
@@ -614,3 +621,105 @@ The full-suite failure is the existing graphics-context restriction in the Codex
 new mapping failure. Live target-Mac feel, cursor travel, jitter, and click-precision impact are
 **UNVERIFIED** until the owner reruns the controller. The increase is deliberately moderate because
 excessive sensitivity would worsen the currently observed click-target retention problem.
+
+### v1.2 excursion and owner-directed v1.1 restoration
+
+On 2026-07-18 the owner approved an experimental Phase 1 v1.2 vocabulary with a physical-right
+index-tip pointer and physical-left atomic pinch click. The branch recorded that decision and
+implementation in these commits:
+
+```text
+f49e870 docs: approve phase 1 gesture vocabulary v1.2
+28e8a52 feat: implement two-hand point and click vocabulary
+8ba9f6a docs: add phase 1 v1.2 validation evidence
+```
+
+Target-Mac use then showed that the experimental vocabulary was not usable for the owner. The owner
+explicitly requested a return to the original palm-controlled pointer state. Commit `cb2b238`
+reverted the complete v1.2 tree and restored the exact v1.1 plus sensitivity-tuning tree from
+`7521b27`. The v1.2 right-index/two-hand vocabulary is therefore historical branch context only;
+it is not the active implementation or acceptance target.
+
+On 2026-07-19 the owner also approved a narrow follow-up correction to the two contradictory Phase
+1 checklist bullets in frozen `PLAN.md` §4. The correction makes those bullets match the already
+approved v1.1 rules: `TWO_FINGER_PENDING` is motion-gated scrolling with the stationary fallback
+disabled by default, and right-click is a cross-exclusive thumb-middle pinch emitted once on
+release. No acceptance threshold, phase boundary, or other frozen section changed.
+
+Claude round 2 reviewed pushed head `cb2b238` and confirmed that the active source is the v1.1
+implementation plus the sensitivity tune. The review requested this execution-history record and a
+v1.1 rewrite of the stale PR title/body before another review round. Camera-derived recordings from
+the v1.2 experiment and subsequent latency investigation remain local and were not added to git.
+
+### 2026-07-19 click-accuracy latency investigation
+
+The owner reported that 3 of 5 click attempts worked during the target-Mac recording
+`Screen Recording 2026-07-19 at 6.59.11 AM.mov`. The matching debug run did not show a gesture
+recognition miss: it emitted exactly five `PINCH_PENDING -> DRAGGING -> NEUTRAL` cycles and ended
+with `LEFT_DOWN:5,LEFT_UP:5,POINTER_MOVE:1277`. It also reported no stale results, out-of-order
+results, result-slot drops, or inferred callback drops.
+
+The captured pointer positions were nevertheless stale. The debug overlay showed callback latency
+growing from approximately 35.9 ms on the first attempt to 67.5 ms, 156.3 ms, 198.3 ms, and then
+798.4 ms. The terminal summary reported `capture_to_quartz_median_ms=55.65` and
+`capture_to_quartz_p95_ms=2015.87`. This confirms that the click accuracy failure was caused first
+by an accumulating MediaPipe `LIVE_STREAM` inference backlog, not by the pinch-distance thresholds.
+
+`LiveHandLandmarker` now permits only one asynchronous inference request at a time. Camera capture
+continues independently; frames offered while inference is busy are not added to a stale queue, and
+the newest available frame may be submitted as soon as the callback completes. A regression test
+verifies that a second frame is rejected while one request is in flight and that submission resumes
+with the newest frame after its callback. Palm cursor input, pinch thresholds, held-pinch drag, and
+all other Phase 1 v1.1 gesture semantics remain unchanged.
+
+Local verification for the latency fix:
+
+```text
+uv run ruff format --check .
+38 files already formatted
+
+uv run ruff check .
+All checks passed!
+
+uv run python -m compileall -q src scripts tests
+PASS
+
+uv run pytest -q
+75 passed in 3.36s
+```
+
+At that stage, fresh target-Mac validation remained **UNVERIFIED**. The owner needed to rerun five
+deliberate clicks and confirm that callback latency no longer grows during the session. If Quartz
+again emits all five down/up pairs but the application still registers fewer clicks after latency
+is bounded, the next investigation is target retention during the existing held-pinch drag, not
+weaker pinch detection.
+
+Fresh target-Mac verification was then completed using
+`Screen Recording 2026-07-19 at 7.21.01 AM.mov`, with small changes in palm angle and hand
+direction between attempts. The browser click tester visibly advanced from 0 to 5 test clicks. The
+controller emitted six complete Quartz cycles, matching one click to start/open the tester plus the
+five counted test clicks:
+
+```text
+action_events=LEFT_DOWN:6,LEFT_UP:6,POINTER_MOVE:996
+reported_false_actions=none
+quartz_left_button_down_after_shutdown=False
+```
+
+The one-request-in-flight correction eliminated the accumulating latency seen in the previous run:
+
+```text
+measurement_duration_s=60.05 capture_fps=29.47 callback_hz=20.00
+submitted=1201 callbacks=1201 capture_slot_drops=11 result_slot_drops=0
+stale_or_out_of_order=0 inferred_dropped=0
+capture_to_quartz_median_ms=34.62 capture_to_quartz_p95_ms=51.71
+frame_age_at_submission_median_ms=0.80 frame_age_at_submission_p95_ms=17.09
+```
+
+The log also showed one additional `PINCH_PENDING -> NEUTRAL pinch_cancelled` candidate. In the
+matching video interval, the hand used a more pronounced thumb-index “OK” circle and the overlay
+reported `pose=unknown`; the candidate never emitted `LEFT_DOWN`. Mild direction changes completed
+normally. This is a bounded false negative for that variation and a correct fail-closed outcome,
+with no phantom click or stuck button. The target-Mac evidence verifies the latency correction and
+five-click browser registration. Broader Phase 1 precision, Dock/Excalidraw behavior, and the full
+gesture-confusion matrix remain separate acceptance checks.
