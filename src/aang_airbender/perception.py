@@ -9,13 +9,10 @@ import mediapipe as mp
 import numpy as np
 
 from .capture import CapturedFrame
+from .config import Phase1Config
+from .coordinates import CAMERA_INPUT_IS_MIRRORED, corrected_handedness
 from .slots import LatestValueSlot
-
-
-@dataclass(frozen=True, slots=True)
-class Landmark2D:
-    x: float
-    y: float
+from .types import HandState, Point3
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,16 +21,6 @@ class SubmissionMetadata:
     captured_at_ns: int
     submitted_at_ns: int
     mediapipe_timestamp_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class LandmarkResult:
-    frame_id: int
-    landmarks: tuple[Landmark2D, ...]
-    captured_at_ns: int
-    submitted_at_ns: int
-    mediapipe_timestamp_ms: int
-    callback_at_ns: int
 
 
 class StrictlyIncreasingMilliseconds:
@@ -81,11 +68,20 @@ class BoundedSubmissionLedger:
 
 
 class LiveHandLandmarker:
-    def __init__(self, model_path: str, *, metrics: object | None = None) -> None:
-        self.latest = LatestValueSlot[LandmarkResult]()
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        config: Phase1Config,
+        metrics: object | None = None,
+    ) -> None:
+        self.latest = LatestValueSlot[HandState]()
         self._timestamps = StrictlyIncreasingMilliseconds()
         self._ledger = BoundedSubmissionLedger()
+        self._submission_lock = Lock()
+        self._submission_in_flight = False
         self._metrics = metrics
+        perception = config.section("perception")
         options = mp.tasks.vision.HandLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(
                 model_asset_path=model_path,
@@ -93,37 +89,57 @@ class LiveHandLandmarker:
             ),
             running_mode=mp.tasks.vision.RunningMode.LIVE_STREAM,
             num_hands=1,
-            min_hand_detection_confidence=0.7,
-            min_hand_presence_confidence=0.7,
-            min_tracking_confidence=0.6,
+            min_hand_detection_confidence=float(perception["min_hand_detection_confidence"]),
+            min_hand_presence_confidence=float(perception["min_hand_presence_confidence"]),
+            min_tracking_confidence=float(perception["min_tracking_confidence"]),
             result_callback=self._callback,
         )
         self._landmarker = mp.tasks.vision.HandLandmarker.create_from_options(options)
 
-    def submit(self, frame: CapturedFrame) -> None:
-        timestamp_ms = self._timestamps.from_monotonic_ns(frame.captured_at_ns)
-        submitted_at_ns = time.monotonic_ns()
-        metadata = SubmissionMetadata(
-            frame.frame_id,
-            frame.captured_at_ns,
-            submitted_at_ns,
-            timestamp_ms,
-        )
-        self._ledger.record(metadata)
-        rgb = cv2.cvtColor(frame.image_bgr, cv2.COLOR_BGR2RGB)
-        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        if self._metrics is not None:
-            self._metrics.record_submission(frame.captured_at_ns, submitted_at_ns)
+    def submit(self, frame: CapturedFrame) -> bool:
+        with self._submission_lock:
+            if self._submission_in_flight:
+                return False
+            self._submission_in_flight = True
+        timestamp_ms: int | None = None
         try:
+            timestamp_ms = self._timestamps.from_monotonic_ns(frame.captured_at_ns)
+            submitted_at_ns = time.monotonic_ns()
+            metadata = SubmissionMetadata(
+                frame.frame_id,
+                frame.captured_at_ns,
+                submitted_at_ns,
+                timestamp_ms,
+            )
+            self._ledger.record(metadata)
+            rgb = cv2.cvtColor(frame.image_bgr, cv2.COLOR_BGR2RGB)
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+            if self._metrics is not None:
+                self._metrics.record_submission(frame.captured_at_ns, submitted_at_ns)
             self._landmarker.detect_async(image, timestamp_ms)
         except Exception:
-            self._ledger.discard(timestamp_ms)
+            if timestamp_ms is not None:
+                self._ledger.discard(timestamp_ms)
+            with self._submission_lock:
+                self._submission_in_flight = False
             raise
+        return True
 
     def _callback(
         self,
         result: mp.tasks.vision.HandLandmarkerResult,
         _output_image: mp.Image,
+        timestamp_ms: int,
+    ) -> None:
+        try:
+            self._publish_result(result, timestamp_ms)
+        finally:
+            with self._submission_lock:
+                self._submission_in_flight = False
+
+    def _publish_result(
+        self,
+        result: mp.tasks.vision.HandLandmarkerResult,
         timestamp_ms: int,
     ) -> None:
         callback_at_ns = time.monotonic_ns()
@@ -132,19 +148,38 @@ class LiveHandLandmarker:
             self._metrics.record_callback(callback_at_ns)
         if metadata is None:
             return
-        landmarks: tuple[Landmark2D, ...] = ()
+        image_landmarks: tuple[Point3, ...] = ()
+        world_landmarks: tuple[Point3, ...] = ()
+        handedness: str | None = None
+        handedness_score = 0.0
         if result.hand_landmarks:
-            landmarks = tuple(
-                Landmark2D(float(item.x), float(item.y)) for item in result.hand_landmarks[0]
+            image_landmarks = tuple(
+                Point3(float(item.x), float(item.y), float(item.z))
+                for item in result.hand_landmarks[0]
             )
+        if result.hand_world_landmarks:
+            world_landmarks = tuple(
+                Point3(float(item.x), float(item.y), float(item.z))
+                for item in result.hand_world_landmarks[0]
+            )
+        if result.handedness and result.handedness[0]:
+            category = result.handedness[0][0]
+            handedness = corrected_handedness(
+                category.category_name,
+                camera_input_is_mirrored=CAMERA_INPUT_IS_MIRRORED,
+            )
+            handedness_score = float(category.score)
         self.latest.publish(
-            LandmarkResult(
-                metadata.frame_id,
-                landmarks,
-                metadata.captured_at_ns,
-                metadata.submitted_at_ns,
-                metadata.mediapipe_timestamp_ms,
-                callback_at_ns,
+            HandState(
+                image_landmarks=image_landmarks,
+                world_landmarks=world_landmarks,
+                handedness=handedness,
+                handedness_score=handedness_score,
+                frame_id=metadata.frame_id,
+                capture_timestamp_ns=metadata.captured_at_ns,
+                mediapipe_timestamp_ms=metadata.mediapipe_timestamp_ms,
+                callback_timestamp_ns=callback_at_ns,
+                valid=len(image_landmarks) == 21,
             )
         )
 

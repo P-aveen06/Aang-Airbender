@@ -290,37 +290,39 @@ Rules:
 
 ---
 
-## 3. Gesture vocabulary — v1 candidate
+## 3. Gesture vocabulary — v1.1 candidate
 
 The vocabulary is an initial candidate, not permanently locked. It becomes v1 only after confusion-matrix testing confirms acceptable safety and usability.
 
 | Pose, initially right hand | Strict initial detection | Action |
 |---|---|---|
-| Pointer-pose family | Either index-only point, or relaxed open hand with at least index, middle, and ring extended; no pinch; confidence valid | Move pointer using filtered palm centroid |
+| Pointer-pose family | Valid tracked hand with no higher-priority command pose; confidence valid | Move pointer using the One Euro-filtered, weighted palm centroid of landmarks 0, 5, 9, 13, and 17; never use the index fingertip as the pointer anchor |
 | Thumb–index pinch | Index pinch ratio enters closed threshold while middle-pinch ratio remains clearly open | Left button down; release threshold emits left button up |
-| Two-finger command pose | Index and middle extended; ring and pinky curled; fingers sufficiently separated | Enter `TWO_FINGER_PENDING`; motion may commit to scroll, while sustained stillness may commit to right-click candidate A |
-| Fist | All four fingers curled for configured dwell | Clutch only: pointer frozen; release establishes a new relative baseline |
+| Held thumb–index pinch | A recognised thumb–index pinch remains closed | Drag by keeping the left button down; there is no separate drag gesture |
+| Thumb–middle pinch | Middle pinch ratio enters closed threshold while the index-pinch ratio remains clearly open | Arm right-click; emit exactly once on release, then require neutral |
+| Two-finger scroll pose | Index and middle extended; ring and pinky curled; fingers sufficiently separated | Enter `TWO_FINGER_PENDING`; commit only when cumulative displacement or filtered velocity exceeds the configured threshold; scroll never moves the pointer |
+| Fist | All four fingers curled for configured dwell, with pinch recognition suppressed while the fist forms | Release any held input, then clutch: pointer frozen; fist release establishes a new relative baseline |
 | Open palm, palm facing camera | All digits extended, stable, valid orientation; engagement meaning recognised only while disengaged | Engage |
-| Right-click candidate A | Two-finger command pose remains inside a stillness radius for the configured dwell | Right-click once, then require neutral |
-| Right-click candidate B, experimental | Thumb–middle pinch while thumb–index remains clearly open | Right-click once, only if testing proves safer and faster |
+| Thumbs-down | Thumb extended downward with the other fingers curled, stable for the configured 1 s dwell | Disengage; the full no-hand timeout remains a second disengagement path |
+| Hand loss | Recognised hand absent | After the short configured grace period, release all held inputs; after the full configured timeout, disengage |
+| Two-finger stillness dwell, disabled fallback | Two-finger scroll pose remains inside a stillness radius for the configured dwell, and the fallback is explicitly enabled in configuration | Right-click once, then require neutral; disabled by default and not part of the v1.1 vocabulary |
 
-### 3.1 Two-finger arbitration
+Cross-pinch exclusion is mandatory: an index pinch is valid only while the middle pinch is clearly open, a middle pinch is valid only while the index pinch is clearly open, and the ambiguous zone emits neither action.
+
+### 3.1 Two-finger scroll arbitration
 
 ```text
 NEUTRAL
     └─ stable two-finger pose ─▶ TWO_FINGER_PENDING
 TWO_FINGER_PENDING
     ├─ cumulative displacement or filtered velocity exceeds threshold ─▶ SCROLLING
-    ├─ sustained stillness reaches right-click dwell ───────────────────▶ RIGHT_CLICK_COMMITTED
     └─ pose breaks before commitment ──────────────────────────────────▶ NEUTRAL
-RIGHT_CLICK_COMMITTED
-    └─ pose returns to neutral ─────────────────────────────────────────▶ NEUTRAL
 ```
 
-- Committing to `SCROLLING` permanently disarms right-click for that two-finger episode.
-- Committing to right-click emits exactly once and cannot transition directly into scrolling.
-- Scroll entry uses both cumulative displacement and filtered velocity so a deliberately slow scroll is not mistaken for stillness.
-- Candidate A remains the safety-oriented baseline; candidate B remains the speed-oriented challenger for workflows where right-click is frequent.
+- Two fingers at rest do nothing.
+- Committing to `SCROLLING` locks the episode to scrolling until the pose ends.
+- Scroll entry uses both cumulative displacement and filtered velocity so a deliberately slow scroll can still commit without assigning stillness another default meaning.
+- The two-finger stillness-dwell right-click recognizer remains available only as a disabled configuration fallback. When explicitly enabled, it retains branch locking and cannot transition directly between right-click and scrolling.
 
 ### 3.2 Pinch hysteresis
 
@@ -338,10 +340,12 @@ The interval between them is a dead zone. Calibration may recommend per-user val
 ```text
 fault and emergency handling
 → release of active held inputs
-→ active drag continuation or release
+→ explicit disengagement dwell
+→ fist recognition, including release-before-clutch
+→ active drag continuation or pinch release
 → active scroll continuation or end
 → active two-finger episode branch lock
-→ pinch recognizers
+→ cross-exclusive thumb–index and thumb–middle pinch recognizers
 → two-finger pending arbitration
 → point recognizer
 → unknown
@@ -351,11 +355,17 @@ fault and emergency handling
 
 - Pinch metrics are normalized for hand size and camera distance.
 - Hysteresis prevents boundary flicker.
-- Pointer anchoring uses the palm, not a pinching fingertip.
-- Gesture stability uses elapsed time.
+- Cross-pinch exclusion makes the ambiguous index/middle pinch zone non-actionable.
+- Pointer anchoring uses the weighted palm centroid of landmarks 0, 5, 9, 13, and 17, not a pinching fingertip.
+- Pointer anchoring is One Euro filtered.
+- All gesture dwells, grace periods, and stability checks use monotonic elapsed time and validated configuration values.
 - Engagement and disengagement use distinct interaction paths.
 - Similar gestures are not assigned to different destructive actions without confusion testing.
-- Index-only and relaxed-open-hand poses form one pointer family and may transition between each other without resetting the cursor baseline.
+- Fist formation suppresses pinch recognition and releases held inputs before entering clutch.
+- Fist release re-baselines the pointer before movement resumes.
+- A held thumb–index pinch is the drag state; drag has no separate gesture.
+- Thumb–middle pinch emits right-click only on release and must return through neutral.
+- Two-finger stillness never emits an action in the default vocabulary; scroll requires configured displacement or velocity and never moves the pointer.
 - Pointer, scroll, and command poses are mutually exclusive whenever possible.
 - Natural-scrolling direction is a first-class configuration option.
 
@@ -396,12 +406,12 @@ Do not add the full gesture vocabulary, calibration, HUD, acceleration curves, c
 - [ ] Add fixture-based unit tests for geometry and pose classification.
 - [ ] Implement the top-level engagement FSM and inner gesture FSM with timestamp-based transitions.
 - [ ] Implement left-pinch hysteresis and cross-pinch exclusion.
-- [ ] Implement `TWO_FINGER_PENDING` arbitration and keep both right-click candidates behind configuration until confusion tests select one.
+- [ ] Implement `TWO_FINGER_PENDING` arbitration for motion-gated scrolling; keep the stationary two-finger right-click fallback disabled by default.
 - [ ] Add One Euro filtering to the palm centroid; start with `min_cutoff=1.0`, `beta=0.007`, then tune empirically.
 - [ ] Implement absolute mapping from a configurable central control box to the active display region.
 - [ ] Define mirroring and handedness behavior in one module and test it.
 - [ ] Emit real left-button down and up events; implement safe drag release.
-- [ ] Implement right-click once, using the safer validated candidate.
+- [ ] Implement right-click once on cross-exclusive thumb–middle pinch release, then require neutral.
 - [ ] Implement pixel scroll without momentum initially.
 - [ ] Implement clutch and fresh-baseline behavior; fist has no disengagement meaning in v1.
 - [ ] Implement `safe_release_all()` and call it from all terminal and error paths.
@@ -624,19 +634,19 @@ Prioritize dangerous confusions:
 ```text
 point → left click
 scroll → left click
-right click → left click
-scroll → right click
-right click → scroll
-two-finger hesitation → right click
-slow scroll → right click
+thumb–index pinch ↔ thumb–middle pinch (wrong-button click)
+fist formation → pinch or click
+fist clutch → thumbs-down disengagement
+natural hand drop → thumbs-down disengagement
 ordinary hand motion → engage
 brief hand loss → unintended disengage
 tracking loss during drag
 reacquisition → pointer jump
+two thumb–index pinch cycles → application-level double-click
 swipe → unintended system action
 ```
 
-A gesture is not promoted into the stable vocabulary until its dangerous confusion rates are acceptable.
+A gesture is not promoted into the stable vocabulary until its dangerous confusion rates are acceptable. Before v1 promotion, tests must explicitly cover the thumb–index versus thumb–middle pair, false pinch during fist formation, fist versus thumbs-down, natural hand drop versus thumbs-down, and application-level double-click behavior from two thumb–index pinch cycles.
 
 ### 5.4 Configuration discipline
 
@@ -785,8 +795,8 @@ aang-airbender/
 These questions should be answered with measured evidence during the indicated phase rather than by preference alone.
 
 1. **Wake pose:** Is open palm rare enough in actual use, or should engagement use a more distinctive pose or HUD action? Decide through adversarial testing in Phase 1.
-2. **Disengagement:** Default to no-hand timeout plus menu-bar and keyboard actions. Test fist-hold only as an optional experiment; if retained, require a 2.5–3.0 s dwell, visible HUD countdown, and immediate cancellation on movement or pose break.
-3. **Right-click:** Does stationary two-finger dwell outperform thumb–middle pinch in invocation speed and confusion with both scrolling and left click? Decide from the Phase 1 confusion matrix.
+2. **Disengagement — decided 2026-07-18:** Use a thumbs-down pose with a configured 1 s monotonic dwell as the explicit gesture path. Keep the configured 2–3 s no-hand timeout as the second path; the short hand-loss grace still releases held inputs first. Fist remains clutch only.
+3. **Right-click — decided 2026-07-18:** Use cross-exclusive thumb–middle pinch and emit one right-click on release, followed by neutral. Two fingers are scroll-only in the default vocabulary; retain stationary two-finger dwell only as a disabled configuration fallback.
 4. **Hand support:** Start with right hand for reduced complexity. Add handedness-agnostic support only after mirroring and geometry tests pass.
 5. **Scroll direction:** Provide a natural-scrolling configuration flag from the first implementation.
 6. **Pointer mode:** Keep both absolute and relative modes; select the default after Fitts, fatigue, and reliability testing.
