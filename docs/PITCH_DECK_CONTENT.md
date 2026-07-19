@@ -160,13 +160,16 @@ Footnote:
 > Phase 1's broader acceptance checklist was stopped before completion when work moved to MVP demo
 > preparation; this is a working prototype, not a finished accessibility product.
 
-## Slide 10 — The next gesture gives spatial control a voice
+## Slide 10 — The next release makes spatial control easier to reach
 
 Visible copy:
 
-> Next: **thumbs-up → Whisper Flow shortcut**
+> Underway now: **bundle Aang-Airbender as a distributable macOS app**
 
-> Then calibration, menu-bar packaging, broader false-action testing, and voice-command workflows.
+> Next gesture: **thumbs-up → Whisper Flow shortcut**
+
+> Then calibration, guided permission onboarding, broader false-action testing, and voice-command
+> workflows.
 
 Closing statement:
 
@@ -193,5 +196,6 @@ Visual direction: resolve the opening question. Use a clean closing product fram
   the tool intentionally supports explicitly authorized diagnostic fixture recording.
 - The thumbs-up shortcut is planned but inactive until the owner supplies the exact key and
   modifiers.
+- macOS app bundling is underway, but no signed or notarized download is available yet.
 - Add “Independent project; not affiliated with OpenAI” wherever the chosen visual treatment could
   otherwise suggest affiliation.

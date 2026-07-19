@@ -137,7 +137,100 @@ Three architecture principles:
 > **Release is unconditional.** Failure, shutdown, hand loss, and clutch transitions all protect
 > held input.
 
-### 5. Journey — the joyful 20-hour build story
+### 5. Install and run — make the current path explicit
+
+Section title:
+
+> Try the MVP on your Mac.
+
+Intro:
+
+> The one-click macOS app is being bundled now. Until that release is ready, the complete MVP can
+> be installed from source in a few terminal steps.
+
+Requirements:
+
+> - Apple Silicon Mac running macOS 13 or newer
+> - Python 3.11 managed through [`uv`](https://docs.astral.sh/uv/)
+> - Camera and Accessibility permission for the terminal application
+
+Step 1 label:
+
+> **Get the source**
+
+```bash
+git clone https://github.com/P-aveen06/Aang-Airbender.git
+cd Aang-Airbender
+git switch codex/phase-1-core-five
+```
+
+Step 2 label:
+
+> **Install the pinned environment**
+
+```bash
+uv python pin 3.11
+uv sync --frozen
+```
+
+Step 3 label:
+
+> **Verify camera and control permissions**
+
+```bash
+uv run python scripts/preflight.py
+```
+
+Permission copy:
+
+> In **System Settings → Privacy & Security**, allow Camera and Accessibility access for the
+> terminal application running Aang-Airbender. Fully quit and reopen that terminal if a permission
+> change is not detected immediately. Preflight should report Python 3.11, `arm64`, Accessibility
+> trusted, and successful camera open/read checks.
+
+Step 4 label:
+
+> **Start Aang-Airbender**
+
+```bash
+uv run python -m aang_airbender.app
+```
+
+First-use copy:
+
+> Hold an open palm facing the camera for about 0.9 seconds to engage. The mirrored camera overlay
+> appears at the bottom-left. Press **Control-C** in the terminal to stop; shutdown releases any
+> mouse button owned by the controller.
+
+Source-install note:
+
+> This source build is the current MVP path. It is intended for Apple Silicon development and demo
+> machines, not yet a signed consumer installer.
+
+Shipping-status block title:
+
+> A Mac app is on the way.
+
+Shipping-status body:
+
+> Work is underway to bundle the controller as a distributable macOS application with a simpler
+> launch experience and guided Camera and Accessibility setup. Signing, notarization, packaging,
+> and final distribution checks are still in progress.
+
+Disabled/coming-soon CTA:
+
+> Download for macOS — coming soon
+
+Secondary CTA:
+
+> Install from source
+
+Implementation note for Claude: the “coming soon” control must not link to a nonexistent download.
+Keep it visibly distinct from the working source-install CTA. When a real signed bundle is
+published, replace this block with the verified download URL, supported macOS versions, checksum,
+and release notes.
+
+### 6. Journey — the joyful 20-hour build story
 
 Section title:
 
@@ -208,7 +301,7 @@ Journey closer:
 > control can feel understandable when responsiveness, restraint, and recovery are designed
 > together.
 
-### 6. Current state and next gesture
+### 7. Current state and next gesture
 
 Section title:
 
@@ -217,8 +310,9 @@ Section title:
 Current-state copy:
 
 > Today, Aang-Airbender can engage, point, click, drag, context-click, scroll, clutch, disengage, and
-> recover safely from hand loss or shutdown. It runs as a local Python application on Apple Silicon
-> macOS and exposes its camera view through a compact always-on overlay.
+> recover safely from hand loss or shutdown. It runs from source on Apple Silicon macOS and exposes
+> its camera view through a compact always-on overlay. Bundling it as a distributable Mac app is now
+> underway.
 
 Next-step copy:
 
@@ -229,11 +323,11 @@ Roadmap labels:
 
 - Thumbs-up → Whisper Flow shortcut
 - Per-user calibration and pointer feel
-- Menu-bar packaging and permission onboarding
+- Signed macOS bundle, simpler launch, and permission onboarding
 - Broader gesture-confusion and false-action testing
 - Voice and command workflows beyond pointer control
 
-### 7. Final node — demo video payoff
+### 8. Final node — demo video payoff
 
 Section title:
 
