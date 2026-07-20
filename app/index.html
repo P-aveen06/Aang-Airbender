@@ -96,6 +96,7 @@ pre .c{color:var(--green-dark)}
 
 /* Journey */
 .journey{position:relative;margin-top:64px;padding-left:44px}
+.journey-source{margin-top:18px;color:var(--muted);font-size:15px}
 .journey::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:1px;background:var(--rule)}
 .jline{position:absolute;left:8px;top:6px;width:1px;background:var(--green);height:0;transition:height 1.2s ease}
 @media (prefers-reduced-motion:reduce){.jline{transition:none}}
@@ -269,6 +270,7 @@ uv sync --frozen</code></pre>
     <span class="sect-num">05 · Journey</span>
     <h2>Twenty hours. One stubborn cursor. Better questions every round.</h2>
     <p class="lede">The prototype did not arrive in a straight line. It moved forward through recordings, failed assumptions, owner feedback, and small corrections that made the interaction feel more honest.</p>
+    <p class="journey-source">The idea began as a conversation. <a href="https://chatgpt.com/share/6a5dd729-8ed0-83ee-b987-0a990bd0350a" target="_blank" rel="noopener noreferrer">Read the original ChatGPT brainstorming session</a> that helped shape its first direction.</p>
     <div class="journey" id="journey-line">
       <div class="jline" aria-hidden="true"></div>
       <div class="node reveal"><h3>First, make one frame move one cursor.</h3><p>The technical spike proved the complete Mac path: camera permission, live hand landmarks, palm geometry, filtered screen mapping, and Quartz input. The first success was wonderfully simple—the cursor followed a raised palm.</p></div>
